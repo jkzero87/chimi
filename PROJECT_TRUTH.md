@@ -145,3 +145,27 @@ NOT MEASURED / ESTIMATE: the `deep` value of 40000 itself is an estimate
 derived from the 32768/8192 context ratio between the two profiles, not
 from measurement. The cap has never fired at the real `fast` setting of
 12000 in any eval run.
+
+## delete_lines escalation policy (reported by user, 2026-08-15, not run by
+a command in this session)
+
+The gate has two conditions: STRUCTURAL (range must map to exactly one
+top-level definition plus optional trailing blanks; .py only, since it
+needs ast) and SIZE (over DELETE_REVIEW_MAX_LINES, all file types). Either
+one refuses the deletion unless override is set.
+
+The override parameter is deliberately absent from SYSTEM, so the model
+cannot invoke it. Reason, worth recording: max_steps is injected into the
+planner prompt and the model demonstrably adapts to it, so any unlock the
+model can see is not a control.
+
+ESTIMATE, NOT MEASURED: DELETE_REVIEW_MAX_LINES = 50. The nine real
+deletions performed on 2026-08-15 ran 9, 13, 21, 32, 37, 40, 40, 44 and 77
+lines, so 50 flags only the largest. No measurement supports the number;
+the structural check is the real safeguard.
+
+KNOWN CONSEQUENCE: two-part _orig_ chain deletions (e.g. the result_score
+wrapper at 1719-1750, which includes the _original_result_score assignment
+alongside the def) will now always require the human override, because
+they contain a top-level statement in addition to the definition. This is
+intended — that deletion is the near-miss that motivated the policy.

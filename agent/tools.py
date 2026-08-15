@@ -6,7 +6,7 @@ MAX_CHARS and GREP_MAX_MATCHES from config.py instead of hardcoding them.
 import ast, difflib, os, re, shutil, subprocess
 from datetime import datetime
 from pathlib import Path
-from config import ROOT, MAX_CHARS, GREP_MAX_MATCHES
+from config import ROOT, MAX_CHARS, GREP_MAX_MATCHES, DELETE_REVIEW_MAX_LINES
 
 TRUNCATION_NOTE = "\n[TRUNCADO en 4000 chars. Usa start_line y end_line para leer un rango]"
 
@@ -127,7 +127,34 @@ def write_file(path, content, dry_run=True):
     q.write_text(content)
     return _diff_result(diff, backup)
 
-def delete_lines(path, start_line, end_line, dry_run=True):
+def _covers_single_top_level_definition(text, start_line, end_line):
+    """True if start_line..end_line (1-indexed, inclusive) is exactly one
+    module-level def/class, optionally plus trailing blank lines up to (but
+    not including) the next non-blank content. Same ast approach as
+    function_ranges: a decorator's line counts as the start, end_lineno as
+    the end. False (not just "unknown") if the text isn't parseable Python.
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return False
+
+    lines = text.split("\n")
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        def_start = node.decorator_list[0].lineno if node.decorator_list else node.lineno
+        def_end = node.end_lineno
+        if start_line != def_start or end_line < def_end:
+            continue
+        if end_line == def_end:
+            return True
+        trailing = lines[def_end:end_line]
+        if all(line.strip() == "" for line in trailing):
+            return True
+    return False
+
+def delete_lines(path, start_line, end_line, dry_run=True, override=False):
     q = _safe(path)
     txt = q.read_text(errors="replace")
     lines = txt.split("\n")
@@ -150,6 +177,28 @@ def delete_lines(path, start_line, end_line, dry_run=True):
 
     if dry_run:
         return _diff_result(diff)
+
+    if not override:
+        size = end_line - start_line + 1
+        size_trips = size > DELETE_REVIEW_MAX_LINES
+        structural_trips = q.suffix == ".py" and not _covers_single_top_level_definition(txt, start_line, end_line)
+        if structural_trips or size_trips:
+            reasons = []
+            if structural_trips:
+                reasons.append(
+                    "el rango no corresponde exactamente a una única definición de "
+                    "nivel superior (como mucho puede sobrar líneas en blanco al final)"
+                )
+            if size_trips:
+                reasons.append(
+                    f"el rango tiene {size} líneas, más del límite de revisión "
+                    f"({DELETE_REVIEW_MAX_LINES})"
+                )
+            return (
+                "RECHAZADO: requiere revisión humana antes de aplicarse ("
+                + "; ".join(reasons) + "). Diff que se habría aplicado:\n"
+                + _diff_result(diff)
+            )
 
     backup = _backup(q)
     q.write_text(new_content)

@@ -11,6 +11,7 @@ def sandbox_root(tmp_path, monkeypatch):
     monkeypatch.setattr(t, "ROOT", tmp_path)
     monkeypatch.setattr(t, "MAX_CHARS", 4000)
     monkeypatch.setattr(t, "GREP_MAX_MATCHES", 200)
+    monkeypatch.setattr(t, "DELETE_REVIEW_MAX_LINES", 50)
 
 
 # --- security: run_safe_bash ---
@@ -148,6 +149,83 @@ def test_delete_lines_dry_run_false_removes_range_and_backs_up(tmp_path):
     backups = list(tmp_path.glob("sample.txt.bak_*"))
     assert len(backups) == 1
     assert backups[0].read_text() == "a\nb\nc\nd\n"
+
+
+# --- delete_lines: escalation policy (backlog item 5) ---
+
+def test_delete_lines_clean_single_function_still_applies(tmp_path):
+    f = tmp_path / "clean.py"
+    f.write_text("def foo():\n    return 1\nx = 2\n")
+    result = t.delete_lines("clean.py", 1, 2, dry_run=False)
+    assert not result.startswith("RECHAZADO")
+    assert f.read_text() == "x = 2\n"
+    assert list(tmp_path.glob("clean.py.bak_*"))
+
+
+def test_delete_lines_range_spanning_def_and_assignment_refused(tmp_path):
+    f = tmp_path / "spans.py"
+    original = "def foo():\n    return 1\nx = 2\n"
+    f.write_text(original)
+    result = t.delete_lines("spans.py", 1, 3, dry_run=False)
+    assert result.startswith("RECHAZADO")
+    assert f.read_text() == original
+    assert not list(tmp_path.glob("spans.py.bak_*"))
+
+
+def test_delete_lines_partial_function_coverage_refused(tmp_path):
+    f = tmp_path / "partial.py"
+    original = "def foo():\n    a = 1\n    b = 2\n    return a + b\n"
+    f.write_text(original)
+    result = t.delete_lines("partial.py", 2, 3, dry_run=False)
+    assert result.startswith("RECHAZADO")
+    assert f.read_text() == original
+    assert not list(tmp_path.glob("partial.py.bak_*"))
+
+
+def test_delete_lines_oversized_but_structurally_clean_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "DELETE_REVIEW_MAX_LINES", 3)
+    f = tmp_path / "big.py"
+    original = "def foo():\n    a = 1\n    b = 2\n    return a + b\n"
+    f.write_text(original)
+    result = t.delete_lines("big.py", 1, 4, dry_run=False)
+    assert result.startswith("RECHAZADO")
+    assert f.read_text() == original
+    assert not list(tmp_path.glob("big.py.bak_*"))
+
+
+def test_delete_lines_override_allows_refused_deletion(tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "DELETE_REVIEW_MAX_LINES", 3)
+    f = tmp_path / "big.py"
+    f.write_text("def foo():\n    a = 1\n    b = 2\n    return a + b\n")
+    result = t.delete_lines("big.py", 1, 4, dry_run=False, override=True)
+    assert not result.startswith("RECHAZADO")
+    assert f.read_text() == ""
+    assert list(tmp_path.glob("big.py.bak_*"))
+
+
+def test_delete_lines_oversized_non_python_file_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "DELETE_REVIEW_MAX_LINES", 3)
+    f = tmp_path / "big.txt"
+    original = "a\nb\nc\nd\ne\n"
+    f.write_text(original)
+    result = t.delete_lines("big.txt", 1, 4, dry_run=False)
+    assert result.startswith("RECHAZADO")
+    assert f.read_text() == original
+    assert not list(tmp_path.glob("big.txt.bak_*"))
+
+
+def test_delete_lines_dry_run_unaffected_by_escalation_policy(tmp_path):
+    f = tmp_path / "spans.py"
+    original = "def foo():\n    return 1\nx = 2\n"
+    f.write_text(original)
+    result = t.delete_lines("spans.py", 1, 3, dry_run=True)
+    assert not result.startswith("RECHAZADO")
+    assert f.read_text() == original
+
+
+def test_delete_lines_override_not_exposed_to_model():
+    assert "override" not in t.SYSTEM
+    assert "delete_lines(path, start_line, end_line, dry_run)" in t.SYSTEM
 
 
 # --- check_syntax ---
