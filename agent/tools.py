@@ -2,7 +2,7 @@
 Copied from llm/harness/tools.py 2026-08-15, adapted to import ROOT,
 MAX_CHARS and GREP_MAX_MATCHES from config.py instead of hardcoding them.
 """
-import os, subprocess
+import os, re, subprocess
 from pathlib import Path
 from config import ROOT, MAX_CHARS, GREP_MAX_MATCHES
 
@@ -52,9 +52,27 @@ def grep_files(pattern, path="."):
     return result
 
 def run_safe_bash(cmd):
-    first = cmd.strip().split()[0] if cmd.strip() else ""
-    if first not in SAFE_CMDS:
-        return f"RECHAZADO: '{first}' no está en la lista de comandos seguros {sorted(SAFE_CMDS)}"
+    if not cmd.strip():
+        return "RECHAZADO: comando vacío"
+    if "`" in cmd:
+        return f"RECHAZADO: contiene backtick (sustitución de comandos no permitida): {cmd}"
+    if "$(" in cmd:
+        return f"RECHAZADO: contiene '$(' (sustitución de comandos no permitida): {cmd}"
+    if ">" in cmd:
+        return f"RECHAZADO: contiene '>' (redirección no permitida): {cmd}"
+    if "<" in cmd:
+        return f"RECHAZADO: contiene '<' (redirección no permitida): {cmd}"
+    if "&" in cmd.replace("&&", ""):
+        return f"RECHAZADO: contiene '&' suelto (solo se permite '&&' como separador): {cmd}"
+
+    for seg in re.split(r"\|\||&&|[|;]", cmd):
+        seg = seg.strip()
+        if not seg:
+            continue
+        first = seg.split()[0]
+        if first not in SAFE_CMDS:
+            return f"RECHAZADO: segmento '{seg}' usa '{first}', no está en la lista de comandos seguros {sorted(SAFE_CMDS)}"
+
     out = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60, cwd=str(ROOT))
     return f"exit={out.returncode}\n{(out.stdout + out.stderr)[:MAX_CHARS]}"
 
