@@ -85,6 +85,26 @@ t/s. A 24576 variant of the same profile ran `eval.py` twice at 10/10
 `-ctk`/`-ctv q8_0` halves the KV cache; this is what makes `-c 32768` fit at
 all (per user).
 
+## reasoning_effort and long-context analysis on "deep" (reported by user,
+chat session 2026-08-14, not verified in this session)
+
+FACT — reasoning_effort must be lowered for long analysis on the deep profile.
+
+Same task both times: the full pre-cleanup research.py (prompt 17,635
+tokens) with a request to classify shadowed vs chained definitions,
+temperature 0.2, deep profile at -c 32768.
+
+With the model default (reasoning_effort xhigh) and max_tokens 12000:
+predicted_n hit exactly 12000 and content came back EMPTY — the entire
+budget was consumed by reasoning. ~8.7 minutes at 22.8 t/s, no answer.
+
+With reasoning_effort=medium and max_tokens 14000: correct analysis
+returned in ~4 minutes — 5,758 tokens generated, 13,004 characters of
+reasoning, 23.2 t/s.
+
+Note this only bites when a large prompt leaves little room; it did not
+occur in any eval run, where tools deliver fragments.
+
 ## FORBIDDEN (reported by user, 2026-08-15, not reproduced in this session)
 
 `--spec-draft-n-max 3`. Benchmarks at 58 t/s on a 26-token prompt but dies
