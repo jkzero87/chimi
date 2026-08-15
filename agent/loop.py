@@ -3,21 +3,23 @@ adapted to import llm_json from agent.llm and PORT from config.py instead of
 research.py/BRAIN_PORT.
 """
 import sys
-from config import PORT, MAX_HISTORY_CHARS
+import config
+from config import PORT
 from agent.llm import llm_json
+from agent.profiles import MAX_HISTORY_CHARS as PROFILE_MAX_HISTORY_CHARS
 from agent.server import ensure
 from agent.tools import TOOLS, SYSTEM
 
 _CONTEXT_ERROR_MARKERS = ("context", "n_ctx", "too long", "exceed")
 
-def _capped_history(entries):
+def _capped_history(entries, max_history_chars):
     full = "".join(entries)
-    if len(full) <= MAX_HISTORY_CHARS or len(entries) <= 1:
+    if len(full) <= max_history_chars or len(entries) <= 1:
         return full, False
 
     first = entries[0]
     rest = entries[1:]
-    budget = max(0, MAX_HISTORY_CHARS - len(first) - 60)
+    budget = max(0, max_history_chars - len(first) - 60)
 
     kept = []
     total = 0
@@ -34,7 +36,7 @@ def _capped_history(entries):
     marker = f"\n[... {omitted} earlier observations omitted ...]\n"
     print(
         f"[loop] history capped: {omitted} observation(s) omitted "
-        f"(history was {len(full)} chars, limit {MAX_HISTORY_CHARS})",
+        f"(history was {len(full)} chars, limit {max_history_chars})",
         file=sys.stderr,
     )
     return first + marker + "".join(kept), True
@@ -43,13 +45,15 @@ def _is_context_error(message):
     lowered = message.lower()
     return any(marker in lowered for marker in _CONTEXT_ERROR_MARKERS)
 
-def local_task(task, max_steps=5, verbose=True):
+def local_task(task, max_steps=5, verbose=True, max_history_chars=None):
+    if max_history_chars is None:
+        max_history_chars = config.MAX_HISTORY_CHARS
     history_entries = []
     history_capped = False
     for step in range(1, max_steps + 1):
         remaining = max_steps - step + 1
         urgency = "\nThis is your LAST step. You MUST set done=true and answer with what you have." if remaining == 1 else f"\nYou have {remaining} tool calls left. If you already have enough evidence, set done=true now."
-        history, capped = _capped_history(history_entries)
+        history, capped = _capped_history(history_entries, max_history_chars)
         history_capped = history_capped or capped
         user = f"Task: {task}\n\nObservations so far:\n{history or '(none)'}\n\nStep {step} of {max_steps}.{urgency}\n\nReturn only JSON."
         try:
@@ -88,7 +92,7 @@ def local_task(task, max_steps=5, verbose=True):
 
 def run_task(task, max_steps=14):
     ensure("fast")
-    result = local_task(task, max_steps=max_steps, verbose=False)
+    result = local_task(task, max_steps=max_steps, verbose=False, max_history_chars=PROFILE_MAX_HISTORY_CHARS["fast"])
 
     if result.get("status") == "MAX_STEPS":
         reason = "max_steps"
@@ -104,7 +108,7 @@ def run_task(task, max_steps=14):
         return result
 
     ensure("deep")
-    result = local_task(task, max_steps=max_steps, verbose=False)
+    result = local_task(task, max_steps=max_steps, verbose=False, max_history_chars=PROFILE_MAX_HISTORY_CHARS["deep"])
     result["profile"] = "deep"
     result["escalation_reason"] = reason
     return result

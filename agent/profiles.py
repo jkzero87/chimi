@@ -22,3 +22,12 @@ PROFILES = {
         "--parallel", "1",
     ],
 }
+
+# Per-profile history cap for agent/loop.py's _capped_history. fast: current
+# value, unchanged (has never fired in any eval). deep: proportional to its
+# 32768 context vs fast's 8192, so the fast->deep escalation on
+# history_capped can actually help instead of hitting the same cap again.
+MAX_HISTORY_CHARS = {
+    "fast": 12000,
+    "deep": 40000,
+}
