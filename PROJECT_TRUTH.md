@@ -191,8 +191,9 @@ budget overrun, correctly labelled for the first time.
 CONSEQUENCE FOR ALL EARLIER NUMBERS: every eval run before this fix
 counted budget overruns as reasoning failures. The chain reasoning-failure
 rate recorded earlier (~1 in 10 across 48 observations) is inflated by an
-unknown amount. Only post-fix runs give a clean figure. Observed
-budget-overrun rate is roughly 5%.
+unknown amount. Observed budget-overrun rate is roughly 5%. The clean
+figure, once overruns were eliminated (see "PLANNER_MAX_TOKENS change"
+below): 3 failures in 40 runs, ~7.5%.
 
 NOT FIXED, noted only: max_tokens=900 is hardcoded in the llm_json call
 inside local_task; llm_json's own default is 800.
@@ -218,3 +219,29 @@ command in this session)
   A recorded case (17,635-token prompt: empty at xhigh/12000 tokens in
   ~8.7 min, correct at medium/14000 tokens in ~4 min) suggests runaway
   deliberation, not budget size, is the underlying issue.
+
+## chain / function_ranges two-arm experiment (reported by user, 2026-08-15,
+not run by a command in this session)
+
+TWO-ARM EXPERIMENT (function_ranges removed from TOOLS and SYSTEM,
+everything else identical): WITHOUT it, chain passed 23/25 (92%); WITH it,
+20/23 (87%). The difference runs in the opposite direction and is inside
+the noise. function_ranges does NOT improve correctness.
+
+WHAT function_ranges DOES buy, measured and unambiguous: steps (3 with it
+vs 5-6 without) and time (~16.5s vs ~22s median). Speed and determinism,
+not accuracy.
+
+THE FAILURE MODE is constant and inherent to the model on this task: it
+describes the wrapper chain correctly, then concludes SAFE on a chain that
+would break. It is not a retrieval problem — handing it the chain as data
+does not fix it, because it was never misreading the chain. Diagnosed
+cause: it reasons about the already-imported module's object graph instead
+of about re-executing the source file top to bottom, where deleting an
+earlier def makes the later capture line raise NameError.
+
+CONSEQUENCE: this ~7.5% clean reasoning-failure rate (see "local_task
+raw_text/call_failed fix" and "PLANNER_MAX_TOKENS change" above) is why
+the delete_lines structural gate exists. A model that misjudges chain
+safety at that rate cannot be the last line of defence on a two-part
+deletion.

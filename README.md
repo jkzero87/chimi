@@ -155,8 +155,16 @@ definitions") in the harness repo (`data-engineer-prep`,
   whole files. (PROJECT_TRUTH.md, "reasoning_effort and long-context
   analysis on 'deep'", user-reported, not verified in this session)
 - The `chain` task (does deduplicating `build_evidence_pack` to its last
-  definition require keeping the `_orig_` chain?) has failed once in nine
-  recorded observations (`eval/results.jsonl`: 8 PASS, 1 FAIL, across
-  `run_id`s `20260815_101436` through `20260815_111215`). Chain/safety
-  judgments like this should not be trusted unsupervised before a
-  destructive edit.
+  definition require keeping the `_orig_` chain?) has a clean
+  reasoning-failure rate of about 7.5% (3 failures in 40 runs, measured
+  after the budget-overrun confound was eliminated — see
+  PROJECT_TRUTH.md). The failure mode is constant: the model describes the
+  wrapper chain correctly, then concludes SAFE on a chain that would
+  break. It is not a retrieval problem — it reasons about the
+  already-imported module's object graph instead of about the source file
+  re-executing top to bottom, where deleting an earlier `def` makes the
+  later capture line raise `NameError`. Giving it `function_ranges` does
+  not fix this: a two-arm experiment found no correctness difference (see
+  PROJECT_TRUTH.md), only fewer steps and less time. This rate is why the
+  `delete_lines` structural gate exists — chain/safety judgments like this
+  should not be trusted unsupervised before a destructive edit.
