@@ -172,6 +172,8 @@ Available tools:
                                            dry_run defaults to true and only returns a diff
                                            without writing. You MUST show the diff and get the
                                            user's approval before calling again with dry_run=false.
+The 'path' argument is a filesystem path ONLY. Never include words from the user's sentence in
+it (prepositions like 'en', 'in', 'the'). Paths are relative to the user's home directory.
 
 Return ONLY JSON:
 {"thought":"short","tool":"name or null","args":{...},"done":false,"answer":""}
