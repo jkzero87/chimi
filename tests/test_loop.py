@@ -108,3 +108,56 @@ def test_capped_history_no_marker_under_cap():
     history, capped = l._capped_history(entries, max_history_chars=12000)
     assert capped is False
     assert "earlier observations omitted" not in history
+
+
+# --- local_task must not surface raw model text or a failed call as status OK ---
+
+def test_local_task_raw_text_flag_returns_error(monkeypatch):
+    monkeypatch.setattr(l, "llm_json", lambda *a, **k: {
+        "answer": "some raw thought blob", "raw_text": True,
+    })
+
+    result = l.local_task("task", max_steps=3)
+
+    assert result["status"] == "ERROR"
+    assert "raw_text" in result["answer"]
+    assert "some raw thought blob" in result["answer"]
+
+
+def test_local_task_call_failed_flag_returns_error(monkeypatch):
+    monkeypatch.setattr(l, "llm_json", lambda *a, **k: {
+        "call_failed": True, "error": "empty model content", "answer": "ERROR: empty model content",
+    })
+
+    result = l.local_task("task", max_steps=3)
+
+    assert result["status"] == "ERROR"
+    assert "call_failed" in result["answer"]
+
+
+def test_local_task_well_formed_done_plan_still_ok(monkeypatch):
+    monkeypatch.setattr(l, "llm_json", lambda *a, **k: {"done": True, "answer": "final answer"})
+
+    result = l.local_task("task", max_steps=3)
+
+    assert result["status"] == "OK"
+    assert result["answer"] == "final answer"
+
+
+def test_local_task_well_formed_tool_plan_proceeds_to_tool(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_llm_json(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {"tool": "fake_tool", "args": {}}
+        return {"done": True, "answer": "ok"}
+
+    tool_calls = []
+    monkeypatch.setattr(l, "llm_json", fake_llm_json)
+    monkeypatch.setattr(l, "TOOLS", {"fake_tool": lambda: tool_calls.append(1) or "observed"})
+
+    result = l.local_task("task", max_steps=3)
+
+    assert tool_calls == [1]
+    assert result["status"] == "OK"

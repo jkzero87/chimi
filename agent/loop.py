@@ -68,6 +68,15 @@ def local_task(task, max_steps=5, verbose=True, max_history_chars=None):
             raise
         if not isinstance(plan, dict):
             return {"status": "ERROR", "answer": f"plan inválido: {plan}", "history_capped": history_capped}
+        if plan.get("raw_text") or plan.get("call_failed"):
+            flag = "raw_text" if plan.get("raw_text") else "call_failed"
+            offending = str(plan.get("answer", ""))[:500]
+            return {
+                "status": "ERROR",
+                "answer": f"el modelo no devolvió un plan JSON válido (flag={flag}): {offending}",
+                "steps": step,
+                "history_capped": history_capped,
+            }
         if plan.get("done") or not plan.get("tool"):
             return {
                 "status": "OK",

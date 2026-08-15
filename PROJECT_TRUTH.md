@@ -169,3 +169,30 @@ wrapper at 1719-1750, which includes the _original_result_score assignment
 alongside the def) will now always require the human override, because
 they contain a top-level statement in addition to the definition. This is
 intended — that deletion is the near-miss that motivated the policy.
+
+## local_task raw_text/call_failed fix (reported by user, 2026-08-15, not
+run by a command in this session)
+
+THE BUG: local_task returned status OK with the model's raw reasoning as
+the answer. Causal chain: the planner runs enable_thinking=False but the
+27B spends its budget in reasoning_content anyway, leaving content empty;
+llm_json falls back to reasoning_content, which is never JSON;
+_json_or_text wraps it as {"answer": <raw>, "raw_text": True}; and
+local_task, finding no "tool" key, returned it as a successful answer.
+
+THE FIX: local_task now checks raw_text and call_failed before the
+done/tool branch and returns status ERROR. agent/llm.py deliberately
+unchanged — the flags were already being set, they were just ignored.
+
+MEASURED, chain x20 after the fix: 18/20 passed, with the status breakdown
+ERROR/False 1, OK/False 1, OK/True 18. One of the two failures was a
+budget overrun, correctly labelled for the first time.
+
+CONSEQUENCE FOR ALL EARLIER NUMBERS: every eval run before this fix
+counted budget overruns as reasoning failures. The chain reasoning-failure
+rate recorded earlier (~1 in 10 across 48 observations) is inflated by an
+unknown amount. Only post-fix runs give a clean figure. Observed
+budget-overrun rate is roughly 5%.
+
+NOT FIXED, noted only: max_tokens=900 is hardcoded in the llm_json call
+inside local_task; llm_json's own default is 800.
