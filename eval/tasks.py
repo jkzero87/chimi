@@ -41,10 +41,14 @@ def _first_result_score_range(path):
     raise ValueError(f"no result_score def found in {path}")
 
 
+_PATH_TOKEN_RE = re.compile(r"\S*(?:/|agente_eval_\w+)\S*")
+
+
 def check_locate(result, sandbox):
     answer = result.get("answer", "")
+    cleaned = _PATH_TOKEN_RE.sub(" ", answer)
     expected = _grep_result_score_lines(FIXTURE)
-    found = {int(n) for n in re.findall(r"\d{3,}", answer)}
+    found = {int(n) for n in re.findall(r"\d{3,}", cleaned)}
     missing = expected - found
     extra = found - expected
     reasons = []
@@ -70,6 +74,12 @@ def check_live_def(result, sandbox):
     return False, [f"answer does not mention line {last_line} (the definition that actually runs)"]
 
 
+_RANGE_RE = re.compile(
+    r"(\d{3,})\s*(?:-|–|\bto\b|\bthrough\b|\ba\b)\s*(\d{3,})",
+    re.IGNORECASE,
+)
+
+
 def check_dry_delete(result, sandbox):
     reasons = []
 
@@ -82,7 +92,7 @@ def check_dry_delete(result, sandbox):
 
     start, end = _first_result_score_range(FIXTURE)
     answer = result.get("answer", "")
-    ranges = re.findall(r"(\d{3,})\s*(?:-|–|to|through)\s*(\d{3,})", answer)
+    ranges = _RANGE_RE.findall(answer)
     matched = any(int(a) == start and int(b) == end for a, b in ranges)
     if not matched:
         reasons.append(f"exact range {start}-{end} not reported; ranges found: {ranges}")
