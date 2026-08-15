@@ -7,3 +7,4 @@ __pycache__/
 .webcache/
 .pytest_cache/
 .pytest_cache/
+.server_state
