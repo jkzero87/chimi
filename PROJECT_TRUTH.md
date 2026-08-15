@@ -196,3 +196,25 @@ budget-overrun rate is roughly 5%.
 
 NOT FIXED, noted only: max_tokens=900 is hardcoded in the llm_json call
 inside local_task; llm_json's own default is 800.
+
+## PLANNER_MAX_TOKENS change (reported by user, 2026-08-15, not run by a
+command in this session)
+
+- CHANGE: the planner's max_tokens was hardcoded to 900 in local_task. It
+  is now config.PLANNER_MAX_TOKENS, default 3000, env-overridable as
+  AGENTE_LOCAL_PLANNER_MAX_TOKENS, with an optional per-call max_tokens
+  parameter on local_task.
+- MEASURED, chain x20 before (900) vs after (3000): budget overruns went
+  from 1 to 0; both batches passed 18/20; median seconds went from ~16.5
+  to 15.7, max 26.8 on a single 4-step run. Raising the ceiling cost no
+  time — the model does not consume the extra budget, it only needed the
+  ceiling out of the way on the rare long run.
+- MEASURED, clean chain reasoning-failure rate: with overruns eliminated,
+  3 failures in 40 runs (~7.5%) across the two post-2d7e07c batches. All
+  earlier figures conflated budget overruns with reasoning failures and
+  should not be cited.
+- NOT TESTED: reasoning_effort (xhigh|medium|low) is never sent by
+  agent/llm.py, which only passes chat_template_kwargs.enable_thinking.
+  A recorded case (17,635-token prompt: empty at xhigh/12000 tokens in
+  ~8.7 min, correct at medium/14000 tokens in ~4 min) suggests runaway
+  deliberation, not budget size, is the underlying issue.

@@ -56,6 +56,34 @@ def test_explicit_cap_wins_over_default(monkeypatch):
     assert seen["cap"] == 999
 
 
+def test_local_task_defaults_to_config_planner_max_tokens(monkeypatch):
+    seen = {}
+
+    def fake_llm_json(port, system, user, temp=0.1, max_tokens=900):
+        seen["max_tokens"] = max_tokens
+        return {"done": True, "answer": "ok"}
+
+    monkeypatch.setattr(l, "llm_json", fake_llm_json)
+
+    l.local_task("task", max_steps=1)
+
+    assert seen["max_tokens"] == config.PLANNER_MAX_TOKENS
+
+
+def test_explicit_max_tokens_wins_over_default(monkeypatch):
+    seen = {}
+
+    def fake_llm_json(port, system, user, temp=0.1, max_tokens=900):
+        seen["max_tokens"] = max_tokens
+        return {"done": True, "answer": "ok"}
+
+    monkeypatch.setattr(l, "llm_json", fake_llm_json)
+
+    l.local_task("task", max_steps=1, max_tokens=1234)
+
+    assert seen["max_tokens"] == 1234
+
+
 def test_run_task_passes_fast_cap_when_no_escalation(monkeypatch):
     seen = {}
 

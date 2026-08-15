@@ -45,9 +45,11 @@ def _is_context_error(message):
     lowered = message.lower()
     return any(marker in lowered for marker in _CONTEXT_ERROR_MARKERS)
 
-def local_task(task, max_steps=5, verbose=True, max_history_chars=None):
+def local_task(task, max_steps=5, verbose=True, max_history_chars=None, max_tokens=None):
     if max_history_chars is None:
         max_history_chars = config.MAX_HISTORY_CHARS
+    if max_tokens is None:
+        max_tokens = config.PLANNER_MAX_TOKENS
     history_entries = []
     history_capped = False
     for step in range(1, max_steps + 1):
@@ -57,7 +59,7 @@ def local_task(task, max_steps=5, verbose=True, max_history_chars=None):
         history_capped = history_capped or capped
         user = f"Task: {task}\n\nObservations so far:\n{history or '(none)'}\n\nStep {step} of {max_steps}.{urgency}\n\nReturn only JSON."
         try:
-            plan = llm_json(PORT, SYSTEM, user, temp=0.1, max_tokens=900)
+            plan = llm_json(PORT, SYSTEM, user, temp=0.1, max_tokens=max_tokens)
         except RuntimeError as e:
             if _is_context_error(str(e)):
                 return {
