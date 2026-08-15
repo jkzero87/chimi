@@ -130,3 +130,18 @@ by hand (not by this module) was bound to 127.0.0.1:8092, pid 15943, and
 responded 200 on `/health`. `agent.server.current_profile()` against that
 process returned `"unknown"`, as required — it did not assume a profile just
 because a server was present.
+
+## Per-profile history cap (reported by user, 2026-08-15, not run by a
+command in this session)
+
+MEASURED: with `agent.profiles.MAX_HISTORY_CHARS` set asymmetrically
+(`{"fast": 500, "deep": 40000}`), the `chain` task escalated on
+`history_capped` and `deep` completed in 3 steps without being capped.
+Under the prior single shared cap of 500 (applied to both profiles), `deep`
+was capped 12 times and took all 14 steps — identical to `fast`, so the
+escalation bought nothing.
+
+NOT MEASURED / ESTIMATE: the `deep` value of 40000 itself is an estimate
+derived from the 32768/8192 context ratio between the two profiles, not
+from measurement. The cap has never fired at the real `fast` setting of
+12000 in any eval run.
