@@ -44,18 +44,43 @@ def _first_result_score_range(path):
 _PATH_TOKEN_RE = re.compile(r"\S*(?:/|agente_eval_\w+)\S*")
 
 
+def _result_score_defs(path):
+    tree = ast.parse(path.read_text())
+    return [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "result_score"]
+
+
+def _orig_assignment_lines(path, name):
+    tree = ast.parse(path.read_text())
+    lines = set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name) and node.value.id == name:
+            for target in node.targets:
+                if isinstance(target, ast.Name) and (target.id.startswith("_orig") or target.id.startswith("_original")):
+                    lines.add(node.lineno)
+    return lines
+
+
 def check_locate(result, sandbox):
     answer = result.get("answer", "")
     cleaned = _PATH_TOKEN_RE.sub(" ", answer)
-    expected = _grep_result_score_lines(FIXTURE)
     found = {int(n) for n in re.findall(r"\d{3,}", cleaned)}
-    missing = expected - found
-    extra = found - expected
+
+    defs = _result_score_defs(FIXTURE)
+    required = {n.lineno for n in defs}
+    allowed = set(required)
+    allowed.update(n.end_lineno for n in defs)
+    allowed.update(_orig_assignment_lines(FIXTURE, "result_score"))
+
+    missing = required - found
+    extra = found - allowed
     reasons = []
     if missing:
         reasons.append(f"missing line numbers: {sorted(missing)}")
     if extra:
-        reasons.append(f"unexpected numbers not in the definition list: {sorted(extra)}")
+        reasons.append(
+            f"unexpected numbers not in the allowed set (def starts, def ends, "
+            f"_orig/_original assignments): {sorted(extra)}"
+        )
     return (not missing and not extra), reasons
 
 

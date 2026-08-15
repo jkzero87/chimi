@@ -148,3 +148,141 @@ def test_delete_lines_dry_run_false_removes_range_and_backs_up(tmp_path):
     backups = list(tmp_path.glob("sample.txt.bak_*"))
     assert len(backups) == 1
     assert backups[0].read_text() == "a\nb\nc\nd\n"
+
+
+# --- check_syntax ---
+
+def test_check_syntax_valid(tmp_path):
+    (tmp_path / "ok.py").write_text("x = 1\ny = 2\n")
+    result = t.check_syntax("ok.py")
+    assert result.startswith("OK")
+
+
+def test_check_syntax_invalid_reports_line(tmp_path):
+    (tmp_path / "bad.py").write_text("def broken(:\n    pass\n")
+    result = t.check_syntax("bad.py")
+    assert "line 1" in result
+
+
+def test_check_syntax_non_python_refused(tmp_path):
+    (tmp_path / "notes.txt").write_text("hello\n")
+    result = t.check_syntax("notes.txt")
+    assert "not a .py file" in result
+
+
+# --- function_ranges ---
+
+_FUNCTION_RANGES_FIXTURE = "\n".join([
+    "def thing():",              # 1
+    "    return 1",              # 2
+    "",                          # 3
+    "",                          # 4
+    "@decorator",                # 5
+    "def thing():",              # 6
+    "    return 2",              # 7
+    "",                          # 8
+    "",                          # 9
+    "_orig_thing = thing",       # 10
+    "",                          # 11
+    "",                          # 12
+    "def thing():",              # 13
+    "    return _orig_thing() + 1",  # 14
+    "",                          # 15
+    "",                          # 16
+    "class Foo:",                # 17
+    "    def thing(self):",      # 18
+    "        return 99",         # 19
+    "",                          # 20
+    "",                          # 21
+    "def outer():",              # 22
+    "    def thing():",          # 23
+    "        return 100",        # 24
+    "    return thing",          # 25
+]) + "\n"
+
+
+def _entry_line(result, range_marker):
+    for line in result.splitlines():
+        if range_marker in line:
+            return line
+    raise AssertionError(f"no line containing {range_marker!r} in:\n{result}")
+
+
+def test_function_ranges_three_definitions_in_file_order(tmp_path):
+    (tmp_path / "fixture.py").write_text(_FUNCTION_RANGES_FIXTURE)
+    result = t.function_ranges("fixture.py", "thing")
+
+    first = _entry_line(result, "1-2")
+    second = _entry_line(result, "5-7")
+    third = _entry_line(result, "13-14")
+
+    assert result.index(first) < result.index(second) < result.index(third)
+
+
+def test_function_ranges_only_last_is_live(tmp_path):
+    (tmp_path / "fixture.py").write_text(_FUNCTION_RANGES_FIXTURE)
+    result = t.function_ranges("fixture.py", "thing")
+
+    assert "live=False" in _entry_line(result, "1-2")
+    assert "live=False" in _entry_line(result, "5-7")
+    assert "live=True" in _entry_line(result, "13-14")
+
+
+def test_function_ranges_decorated_start_is_decorator_line(tmp_path):
+    (tmp_path / "fixture.py").write_text(_FUNCTION_RANGES_FIXTURE)
+    result = t.function_ranges("fixture.py", "thing")
+    # decorator is on line 5, def on line 6 -- start_line must be 5, not 6
+    assert "5-7" in result
+    assert "6-7" not in result
+
+
+def test_function_ranges_calls_orig(tmp_path):
+    (tmp_path / "fixture.py").write_text(_FUNCTION_RANGES_FIXTURE)
+    result = t.function_ranges("fixture.py", "thing")
+
+    assert "_orig_thing" in _entry_line(result, "13-14")
+    assert "_orig_thing" not in _entry_line(result, "1-2")
+    assert "_orig_thing" not in _entry_line(result, "5-7")
+
+
+def test_function_ranges_orig_assignment_line(tmp_path):
+    (tmp_path / "fixture.py").write_text(_FUNCTION_RANGES_FIXTURE)
+    result = t.function_ranges("fixture.py", "thing")
+    assert "line 10" in result
+    assert "_orig_thing = thing" in result
+
+
+def test_function_ranges_ignores_nested_definitions(tmp_path):
+    (tmp_path / "fixture.py").write_text(_FUNCTION_RANGES_FIXTURE)
+    result = t.function_ranges("fixture.py", "thing")
+    # class Foo's thing (18-19) and outer()'s nested thing (23-24) are not module-level
+    assert "18-19" not in result
+    assert "23-24" not in result
+    assert result.count("live=") == 3
+
+
+def test_function_ranges_no_such_name(tmp_path):
+    (tmp_path / "fixture.py").write_text(_FUNCTION_RANGES_FIXTURE)
+    result = t.function_ranges("fixture.py", "nonexistent")
+    assert "no module-level definition" in result
+
+
+# --- allowlist: cp, diff added; interpreters still rejected ---
+
+def test_cp_allowed(tmp_path):
+    (tmp_path / "a.txt").write_text("hi\n")
+    result = t.run_safe_bash("cp a.txt b.txt")
+    assert not result.startswith("RECHAZADO")
+    assert (tmp_path / "b.txt").read_text() == "hi\n"
+
+
+def test_diff_allowed(tmp_path):
+    (tmp_path / "a.txt").write_text("hi\n")
+    (tmp_path / "b.txt").write_text("hi\n")
+    result = t.run_safe_bash("diff a.txt b.txt")
+    assert not result.startswith("RECHAZADO")
+
+
+def test_python3_still_rejected():
+    result = t.run_safe_bash("python3 -c 'x'")
+    assert result.startswith("RECHAZADO")

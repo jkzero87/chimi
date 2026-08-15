@@ -5,12 +5,15 @@ research.py/BRAIN_PORT.
 import sys
 from config import PORT, MAX_HISTORY_CHARS
 from agent.llm import llm_json
+from agent.server import ensure
 from agent.tools import TOOLS, SYSTEM
+
+_CONTEXT_ERROR_MARKERS = ("context", "n_ctx", "too long", "exceed")
 
 def _capped_history(entries):
     full = "".join(entries)
     if len(full) <= MAX_HISTORY_CHARS or len(entries) <= 1:
-        return full
+        return full, False
 
     first = entries[0]
     rest = entries[1:]
@@ -26,7 +29,7 @@ def _capped_history(entries):
 
     omitted = len(rest) - len(kept)
     if omitted == 0:
-        return full
+        return full, False
 
     marker = f"\n[... {omitted} earlier observations omitted ...]\n"
     print(
@@ -34,20 +37,40 @@ def _capped_history(entries):
         f"(history was {len(full)} chars, limit {MAX_HISTORY_CHARS})",
         file=sys.stderr,
     )
-    return first + marker + "".join(kept)
+    return first + marker + "".join(kept), True
+
+def _is_context_error(message):
+    lowered = message.lower()
+    return any(marker in lowered for marker in _CONTEXT_ERROR_MARKERS)
 
 def local_task(task, max_steps=5, verbose=True):
     history_entries = []
+    history_capped = False
     for step in range(1, max_steps + 1):
         remaining = max_steps - step + 1
         urgency = "\nThis is your LAST step. You MUST set done=true and answer with what you have." if remaining == 1 else f"\nYou have {remaining} tool calls left. If you already have enough evidence, set done=true now."
-        history = _capped_history(history_entries)
+        history, capped = _capped_history(history_entries)
+        history_capped = history_capped or capped
         user = f"Task: {task}\n\nObservations so far:\n{history or '(none)'}\n\nStep {step} of {max_steps}.{urgency}\n\nReturn only JSON."
-        plan = llm_json(PORT, SYSTEM, user, temp=0.1, max_tokens=900)
+        try:
+            plan = llm_json(PORT, SYSTEM, user, temp=0.1, max_tokens=900)
+        except RuntimeError as e:
+            if _is_context_error(str(e)):
+                return {
+                    "status": "CONTEXT_ERROR",
+                    "answer": f"servidor reportó error de contexto: {e}",
+                    "history_capped": history_capped,
+                }
+            raise
         if not isinstance(plan, dict):
-            return {"status": "ERROR", "answer": f"plan inválido: {plan}"}
+            return {"status": "ERROR", "answer": f"plan inválido: {plan}", "history_capped": history_capped}
         if plan.get("done") or not plan.get("tool"):
-            return {"status": "OK", "answer": plan.get("answer", ""), "steps": step}
+            return {
+                "status": "OK",
+                "answer": plan.get("answer", ""),
+                "steps": step,
+                "history_capped": history_capped,
+            }
         name, args = plan.get("tool"), plan.get("args") or {}
         if verbose:
             print(f"  [{step}] {name}({args})")
@@ -56,4 +79,32 @@ def local_task(task, max_steps=5, verbose=True):
         except Exception as e:
             obs = f"ERROR: {e}"
         history_entries.append(f"\n--- {name}({args}) ---\n{obs}\n")
-    return {"status": "MAX_STEPS", "answer": "no terminé en los pasos permitidos", "history": "".join(history_entries)[-1500:]}
+    return {
+        "status": "MAX_STEPS",
+        "answer": "no terminé en los pasos permitidos",
+        "history": "".join(history_entries)[-1500:],
+        "history_capped": history_capped,
+    }
+
+def run_task(task, max_steps=14):
+    ensure("fast")
+    result = local_task(task, max_steps=max_steps, verbose=False)
+
+    if result.get("status") == "MAX_STEPS":
+        reason = "max_steps"
+    elif result.get("history_capped"):
+        reason = "history_capped"
+    elif result.get("status") == "CONTEXT_ERROR":
+        reason = "context_error"
+    else:
+        reason = None
+
+    if reason is None:
+        result["profile"] = "fast"
+        return result
+
+    ensure("deep")
+    result = local_task(task, max_steps=max_steps, verbose=False)
+    result["profile"] = "deep"
+    result["escalation_reason"] = reason
+    return result

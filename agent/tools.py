@@ -11,7 +11,8 @@ from config import ROOT, MAX_CHARS, GREP_MAX_MATCHES
 TRUNCATION_NOTE = "\n[TRUNCADO en 4000 chars. Usa start_line y end_line para leer un rango]"
 
 SAFE_CMDS = {"ls","cat","head","tail","wc","df","du","find","grep","git",
-             "systemctl","docker","nvidia-smi","free","uname","which","ss","date","ps"}
+             "systemctl","docker","nvidia-smi","free","uname","which","ss","date","ps",
+             "cp","diff"}
 
 def _safe(p):
     q = Path(os.path.expanduser(str(p)))
@@ -154,9 +155,72 @@ def delete_lines(path, start_line, end_line, dry_run=True):
     q.write_text(new_content)
     return _diff_result(diff, backup)
 
+def check_syntax(path):
+    q = _safe(path)
+    if q.suffix != ".py":
+        return f"{q} is not a .py file; nothing to check"
+    src = q.read_text(errors="replace")
+    try:
+        ast.parse(src)
+    except SyntaxError as e:
+        return f"SyntaxError: {e.msg} (line {e.lineno}, offset {e.offset})"
+    n = len(src.split("\n"))
+    return f"OK: valid Python ({n} lines)"
+
+def _calls_orig(node):
+    found = []
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name):
+            n = sub.func.id
+            if (n.startswith("_orig") or n.startswith("_original")) and n not in found:
+                found.append(n)
+    return found
+
+def _orig_assignments(tree, name):
+    found = []
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not (isinstance(node.value, ast.Name) and node.value.id == name):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and (target.id.startswith("_orig") or target.id.startswith("_original")):
+                found.append((target.id, node.lineno))
+    return found
+
+def function_ranges(path, name):
+    q = _safe(path)
+    if q.suffix != ".py":
+        return f"{q} is not a .py file; nothing to inspect"
+    tree = ast.parse(q.read_text(errors="replace"))
+
+    defs = [n for n in tree.body
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name]
+    if not defs:
+        return f"no module-level definition of '{name}' found in {q}"
+
+    lines = []
+    for i, node in enumerate(defs):
+        start = node.decorator_list[0].lineno if node.decorator_list else node.lineno
+        end = node.end_lineno
+        live = (i == len(defs) - 1)
+        calls = _calls_orig(node)
+        lines.append(f"{name} at lines {start}-{end}: live={live} calls_orig={calls}")
+
+    assigns = _orig_assignments(tree, name)
+    if assigns:
+        lines.append(f"module-level _orig/_original assignments pointing at '{name}':")
+        for target_id, lineno in assigns:
+            lines.append(f"  line {lineno}: {target_id} = {name}")
+    else:
+        lines.append(f"no module-level _orig/_original assignment found for '{name}'")
+
+    return "\n".join(lines)
+
 TOOLS = {"list_dir": list_dir, "read_file": read_file,
          "grep_files": grep_files, "run_safe_bash": run_safe_bash,
-         "write_file": write_file, "delete_lines": delete_lines}
+         "write_file": write_file, "delete_lines": delete_lines,
+         "check_syntax": check_syntax, "function_ranges": function_ranges}
 
 SYSTEM = """You are a local assistant on the user's Linux PC. Answer using ONLY real tool output.
 Available tools:
@@ -172,8 +236,18 @@ Available tools:
                                            dry_run defaults to true and only returns a diff
                                            without writing. You MUST show the diff and get the
                                            user's approval before calling again with dry_run=false.
+- check_syntax(path)        parse a .py file with ast.parse; reports OK or the exact SyntaxError
+                             (line and offset).
+- function_ranges(path, name)  for a .py file, list every MODULE-LEVEL def/async def named `name`
+                             in file order, each with its start line (decorator line if
+                             decorated), end line, whether it is the live (last) one, and any
+                             _orig/_original names it calls; also lists module-level
+                             `_orig... = name` assignments. Does not look inside classes or
+                             other functions.
 The 'path' argument is a filesystem path ONLY. Never include words from the user's sentence in
 it (prepositions like 'en', 'in', 'the'). Paths are relative to the user's home directory.
+When asked to locate or delete a function, use function_ranges to get its exact boundaries
+rather than inferring them from grep output or reading around it.
 
 Return ONLY JSON:
 {"thought":"short","tool":"name or null","args":{...},"done":false,"answer":""}
