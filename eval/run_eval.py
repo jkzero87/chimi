@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent.loop import local_task
 from agent.server import ensure
-from config import ROOT
+from config import ROOT, DEFAULT_PROFILE
 from eval.tasks import TASKS
 
 RESULTS_PATH = Path(__file__).resolve().parent / "results.jsonl"
@@ -51,7 +51,7 @@ def run_task(task, profile, run_id):
 
 def main():
     parser = argparse.ArgumentParser(description="agente-local eval suite")
-    parser.add_argument("--profile", choices=["fast", "deep"], default="deep")
+    parser.add_argument("--profile", choices=["fast", "deep"], default=DEFAULT_PROFILE)
     parser.add_argument("--only")
     parser.add_argument("--runs", type=int, default=1)
     args = parser.parse_args()
