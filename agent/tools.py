@@ -1,10 +1,14 @@
-"""Local tools for agente-local. READ-ONLY: nothing here modifies the system.
+"""Local tools for agente-local. Read tools plus write_file/delete_lines,
+which modify the filesystem under ROOT (dry_run defaults to true on both).
 Copied from llm/harness/tools.py 2026-08-15, adapted to import ROOT,
 MAX_CHARS and GREP_MAX_MATCHES from config.py instead of hardcoding them.
 """
-import os, re, subprocess
+import ast, difflib, os, re, shutil, subprocess
+from datetime import datetime
 from pathlib import Path
 from config import ROOT, MAX_CHARS, GREP_MAX_MATCHES
+
+TRUNCATION_NOTE = "\n[TRUNCADO en 4000 chars. Usa start_line y end_line para leer un rango]"
 
 SAFE_CMDS = {"ls","cat","head","tail","wc","df","du","find","grep","git",
              "systemctl","docker","nvidia-smi","free","uname","which","ss","date","ps"}
@@ -18,6 +22,17 @@ def _safe(p):
         raise ValueError(f"fuera del sandbox: {q}")
     if not q.exists():
         raise ValueError(f"no existe: {q} (las rutas relativas se resuelven desde {ROOT})")
+    return q
+
+def _safe_new(p):
+    q = Path(os.path.expanduser(str(p)))
+    if not q.is_absolute():
+        q = ROOT / q
+    q = q.resolve()
+    if q != ROOT and ROOT not in q.parents:
+        raise ValueError(f"fuera del sandbox: {q}")
+    if not q.parent.exists():
+        raise ValueError(f"el directorio padre no existe: {q.parent} (las rutas relativas se resuelven desde {ROOT})")
     return q
 
 def list_dir(path="."):
@@ -76,8 +91,72 @@ def run_safe_bash(cmd):
     out = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60, cwd=str(ROOT))
     return f"exit={out.returncode}\n{(out.stdout + out.stderr)[:MAX_CHARS]}"
 
+def _backup(q):
+    backup = q.with_name(q.name + f".bak_{datetime.now():%Y%m%d_%H%M%S}")
+    shutil.copy2(q, backup)
+    return backup
+
+def _diff_result(diff_text, backup=None):
+    if backup is not None:
+        diff_text += f"\n[backup: {backup}]"
+    truncated = len(diff_text) > MAX_CHARS
+    diff_text = diff_text[:MAX_CHARS]
+    if truncated:
+        diff_text += TRUNCATION_NOTE
+    return diff_text or "(sin cambios)"
+
+def write_file(path, content, dry_run=True):
+    q = _safe_new(path)
+    if q.suffix == ".py":
+        try:
+            ast.parse(content)
+        except SyntaxError as e:
+            return f"RECHAZADO: sintaxis Python inválida en {q}: {e}"
+
+    current = q.read_text(errors="replace") if q.exists() else ""
+    diff = "".join(difflib.unified_diff(
+        current.splitlines(keepends=True), content.splitlines(keepends=True),
+        fromfile=str(q), tofile=str(q),
+    ))
+
+    if dry_run:
+        return _diff_result(diff)
+
+    backup = _backup(q) if q.exists() else None
+    q.write_text(content)
+    return _diff_result(diff, backup)
+
+def delete_lines(path, start_line, end_line, dry_run=True):
+    q = _safe(path)
+    txt = q.read_text(errors="replace")
+    lines = txt.split("\n")
+    n = len(lines)
+    if start_line < 1 or end_line < start_line or end_line > n:
+        return f"RECHAZADO: rango {start_line}-{end_line} fuera de límites; el archivo tiene {n} líneas"
+
+    new_content = "\n".join(lines[:start_line - 1] + lines[end_line:])
+
+    if q.suffix == ".py":
+        try:
+            ast.parse(new_content)
+        except SyntaxError as e:
+            return f"RECHAZADO: el resultado tendría sintaxis Python inválida: {e}"
+
+    diff = "".join(difflib.unified_diff(
+        txt.splitlines(keepends=True), new_content.splitlines(keepends=True),
+        fromfile=str(q), tofile=str(q),
+    ))
+
+    if dry_run:
+        return _diff_result(diff)
+
+    backup = _backup(q)
+    q.write_text(new_content)
+    return _diff_result(diff, backup)
+
 TOOLS = {"list_dir": list_dir, "read_file": read_file,
-         "grep_files": grep_files, "run_safe_bash": run_safe_bash}
+         "grep_files": grep_files, "run_safe_bash": run_safe_bash,
+         "write_file": write_file, "delete_lines": delete_lines}
 
 SYSTEM = """You are a local assistant on the user's Linux PC. Answer using ONLY real tool output.
 Available tools:
@@ -85,6 +164,14 @@ Available tools:
 - read_file(path, start_line, end_line)  read a text file, optionally a line range
 - grep_files(pattern, path) search text recursively
 - run_safe_bash(cmd)        safe read-only commands (ls, df, git, systemctl, nvidia-smi, ...)
+- write_file(path, content, dry_run)      create or overwrite a file. dry_run defaults to
+                                           true and only returns a diff without writing. You
+                                           MUST show the diff and get the user's approval
+                                           before calling again with dry_run=false.
+- delete_lines(path, start_line, end_line, dry_run)  remove a 1-indexed inclusive line range.
+                                           dry_run defaults to true and only returns a diff
+                                           without writing. You MUST show the diff and get the
+                                           user's approval before calling again with dry_run=false.
 
 Return ONLY JSON:
 {"thought":"short","tool":"name or null","args":{...},"done":false,"answer":""}

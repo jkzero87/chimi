@@ -81,3 +81,70 @@ def test_grep_files_truncation_notice(tmp_path, monkeypatch):
     (tmp_path / "many.txt").write_text("\n".join(f"needle {i}" for i in range(10)) + "\n")
     result = t.grep_files("needle", ".")
     assert result.endswith("\n[RESULTADO TRUNCADO: puede haber mas coincidencias]")
+
+
+# --- write_file ---
+
+def test_write_file_dry_run_does_not_create(tmp_path):
+    result = t.write_file("new.txt", "hello\n", dry_run=True)
+    assert not (tmp_path / "new.txt").exists()
+    assert "hello" in result
+
+
+def test_write_file_dry_run_false_creates_and_backs_up(tmp_path):
+    existing = tmp_path / "existing.txt"
+    existing.write_text("old\n")
+    result = t.write_file("existing.txt", "new\n", dry_run=False)
+    assert existing.read_text() == "new\n"
+    backups = list(tmp_path.glob("existing.txt.bak_*"))
+    assert len(backups) == 1
+    assert backups[0].read_text() == "old\n"
+    assert "[backup:" in result
+
+
+def test_write_file_refuses_invalid_python(tmp_path):
+    result = t.write_file("bad.py", "def broken(:\n", dry_run=False)
+    assert result.startswith("RECHAZADO")
+    assert not (tmp_path / "bad.py").exists()
+
+
+def test_write_file_outside_root_raises():
+    with pytest.raises(ValueError, match="fuera del sandbox"):
+        t.write_file("/etc/pwned.txt", "x", dry_run=True)
+
+
+# --- delete_lines ---
+
+def test_delete_lines_dry_run_does_not_modify(tmp_path):
+    f = tmp_path / "sample.txt"
+    f.write_text("a\nb\nc\nd\n")
+    result = t.delete_lines("sample.txt", 2, 3, dry_run=True)
+    assert f.read_text() == "a\nb\nc\nd\n"
+    assert "b" in result
+
+
+def test_delete_lines_out_of_range_names_line_count(tmp_path):
+    f = tmp_path / "sample.txt"
+    f.write_text("a\nb\nc\n")
+    n = len(f.read_text().split("\n"))
+    result = t.delete_lines("sample.txt", 1, 99, dry_run=True)
+    assert result.startswith("RECHAZADO")
+    assert str(n) in result
+
+
+def test_delete_lines_refuses_invalid_python_result(tmp_path):
+    f = tmp_path / "bad.py"
+    f.write_text("def foo():\n    return 1\n")
+    result = t.delete_lines("bad.py", 2, 2, dry_run=False)
+    assert result.startswith("RECHAZADO")
+    assert f.read_text() == "def foo():\n    return 1\n"
+
+
+def test_delete_lines_dry_run_false_removes_range_and_backs_up(tmp_path):
+    f = tmp_path / "sample.txt"
+    f.write_text("a\nb\nc\nd\n")
+    t.delete_lines("sample.txt", 2, 3, dry_run=False)
+    assert f.read_text() == "a\nd\n"
+    backups = list(tmp_path.glob("sample.txt.bak_*"))
+    assert len(backups) == 1
+    assert backups[0].read_text() == "a\nb\nc\nd\n"
