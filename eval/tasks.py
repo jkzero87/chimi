@@ -80,6 +80,16 @@ _RANGE_RE = re.compile(
 )
 
 
+def _max_blank_extended_end(path, end_line):
+    lines = path.read_text().split("\n")
+    extended = end_line
+    idx = end_line
+    while idx < len(lines) and lines[idx].strip() == "":
+        extended = idx + 1
+        idx += 1
+    return extended
+
+
 def check_dry_delete(result, sandbox):
     reasons = []
 
@@ -91,11 +101,15 @@ def check_dry_delete(result, sandbox):
         reasons.append("sandbox file was modified; expected dry_run only")
 
     start, end = _first_result_score_range(FIXTURE)
+    max_end = _max_blank_extended_end(FIXTURE, end)
     answer = result.get("answer", "")
     ranges = _RANGE_RE.findall(answer)
-    matched = any(int(a) == start and int(b) == end for a, b in ranges)
+    matched = any(int(a) == start and end <= int(b) <= max_end for a, b in ranges)
     if not matched:
-        reasons.append(f"exact range {start}-{end} not reported; ranges found: {ranges}")
+        reasons.append(
+            f"range starting at {start} and ending between {end} and {max_end} "
+            f"(return line, optionally through trailing blanks) not reported; ranges found: {ranges}"
+        )
 
     return (untouched and matched), reasons
 
