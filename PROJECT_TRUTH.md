@@ -245,3 +245,39 @@ raw_text/call_failed fix" and "PLANNER_MAX_TOKENS change" above) is why
 the delete_lines structural gate exists. A model that misjudges chain
 safety at that rate cannot be the last line of defence on a two-part
 deletion.
+
+## eval/analyze.py (reported by user, 2026-08-15; schema finding and arm
+figures corroborated this session via eval/analyze.py, see below)
+
+- eval/analyze.py provides load/runs/summarize/compare plus a CLI
+  (--list, --run, --compare, --task).
+- MEASURED, schema finding: results.jsonl records drop keys depending on
+  the code path that produced them — CONTEXT_ERROR and MAX_STEPS never set
+  steps. Any steps statistic therefore excludes failed runs unless those
+  records are counted explicitly. analyze.py counts them under
+  missing_fields.
+- MEASURED, arm identification: the two-arm chain runs are distinguishable
+  from the data itself — the arm without function_ranges has median 5
+  steps, the arm with it has median 3.
+- CORRECTION to the two-arm figures already recorded: run 20260815_154155
+  (the with-function_ranges arm) predates commit 2d7e07c, so its failures
+  include at least one budget overrun miscounted as a reasoning failure.
+  Adjusted it is 18/20 rather than 17/20, narrowing the gap to 5 points.
+  Both arms predate the fix, so neither is a clean reasoning-failure
+  measurement. The conclusion (no evidence function_ranges improves
+  correctness) is unaffected; the specific rates should not be cited as
+  clean.
+
+Corroborated this session:
+```
+$ python3 -c "from eval import analyze as a; recs = a.load(); \
+  print(a.summarize(recs, run_id='20260815_154155', task_id='chain')['steps']); \
+  print(a.summarize(recs, run_id='20260815_153256', task_id='chain')['steps'])"
+{'median': 3.0, 'min': 3, 'max': 4}
+{'median': 5.0, 'min': 5, 'max': 6}
+```
+Of the 3 failing chain records in 20260815_154155, one is a raw
+`{"thought": ...}` reasoning dump truncated mid-sentence with no SAFE/UNSAFE
+verdict — the pre-2d7e07c budget-overrun signature — while the other two
+are well-formed SAFE conclusions on a chain that is actually UNSAFE
+(genuine reasoning failures).
