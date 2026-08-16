@@ -336,8 +336,33 @@ command in this session)
   Steps median 3.0 with min 2 and max 4, where the baseline arm was rigid
   at 3/3/3. Given the key fact, the model sometimes finishes in 2 steps,
   which did not happen before.
-- NOT RESOLVED: the example uses `_orig = f`, which is this codebase's
-  naming convention rather than a general Python idiom. It cannot be
-  distinguished whether the model learned the semantics or recognised the
-  name. The effect is real; its cause is not established. A run with
-  `x = f` would separate the two.
+- RESOLVED (run 20260816_083350, `python3 eval/run_eval.py --only chain
+  --runs 100`, profile fast; verified this session via
+  `python3 eval/analyze.py --run 20260816_083350`). The example was
+  temporarily changed from `_orig = f` to `x = f` — one token, nothing
+  else in SYSTEM changed — to test whether the effect depended on
+  matching this codebase's naming convention rather than the semantics
+  themselves. Decision rule fixed before the run: >=98/100 = model
+  applies the semantics, <=93/100 = it was recognising the convention,
+  94-97 = inconclusive.
+  RESULT: n=100 passed=100 pass_rate=100.0%, status_breakdown={'OK': 100},
+  steps median=3.0 (min 2, max 5), seconds median=15.89 (min 10.6, max
+  33.72). 100 clears the >=98 bar: NOT name recognition — the SYSTEM
+  wording does not need to match the codebase's naming convention.
+  LIMIT: the eval fixture still uses `_original_result_score`, and
+  function_ranges returned calls_orig=True in all 100 runs (as reported;
+  not independently verifiable against eval/results.jsonl, which does not
+  record per-call tool output), so the mechanical anchor never moved.
+  Transfer of the rule to code using a DIFFERENT naming convention
+  remains untested.
+  NOT INTERPRETABLE: the timing difference against the baseline arm (run
+  20260815_195320, median 14.145s, steps max 4) — neither arm was
+  repeated and run-to-run noise is ~10%. Accuracy is identical between
+  the two wordings (100/100 both).
+- KNOWN GAP (agent/tools.py, found by grep this session, not fixed):
+  `_calls_orig` (line 224) and `_orig_assignments` (line 236) only match
+  names starting with `_orig` or `_original`. On code using a different
+  convention (e.g. `old_f`, `prev_f`), function_ranges reports
+  calls_orig=False SILENTLY — the agent loses the mechanical fact and
+  gets a false negative at the same time. The convention also appears in
+  the tool's description and in its printed output, not only in SYSTEM.
