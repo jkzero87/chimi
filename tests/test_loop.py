@@ -189,3 +189,45 @@ def test_local_task_well_formed_tool_plan_proceeds_to_tool(monkeypatch):
 
     assert tool_calls == [1]
     assert result["status"] == "OK"
+
+
+# --- local_task must return "tool_calls" (name + args, no observation) on every path ---
+
+def test_local_task_tool_calls_recorded_on_ok_path(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_llm_json(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {"tool": "fake_tool", "args": {"path": "."}}
+        return {"done": True, "answer": "ok"}
+
+    monkeypatch.setattr(l, "llm_json", fake_llm_json)
+    monkeypatch.setattr(l, "TOOLS", {"fake_tool": lambda **kw: "observed"})
+
+    result = l.local_task("task", max_steps=3)
+
+    assert result["status"] == "OK"
+    assert result["tool_calls"] == [{"step": 1, "tool": "fake_tool", "args": {"path": "."}}]
+
+
+def test_local_task_tool_calls_empty_when_no_tool_called(monkeypatch):
+    monkeypatch.setattr(l, "llm_json", lambda *a, **k: {"done": True, "answer": "final"})
+
+    result = l.local_task("task", max_steps=3)
+
+    assert result["status"] == "OK"
+    assert result["tool_calls"] == []
+
+
+def test_local_task_tool_calls_recorded_on_max_steps_path(monkeypatch):
+    monkeypatch.setattr(l, "llm_json", lambda *a, **k: {"tool": "fake_tool", "args": {}})
+    monkeypatch.setattr(l, "TOOLS", {"fake_tool": lambda **kw: "observed"})
+
+    result = l.local_task("task", max_steps=2)
+
+    assert result["status"] == "MAX_STEPS"
+    assert result["tool_calls"] == [
+        {"step": 1, "tool": "fake_tool", "args": {}},
+        {"step": 2, "tool": "fake_tool", "args": {}},
+    ]

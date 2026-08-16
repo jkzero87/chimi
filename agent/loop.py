@@ -51,6 +51,7 @@ def local_task(task, max_steps=5, verbose=True, max_history_chars=None, max_toke
     if max_tokens is None:
         max_tokens = config.PLANNER_MAX_TOKENS
     history_entries = []
+    tool_calls = []
     history_capped = False
     for step in range(1, max_steps + 1):
         remaining = max_steps - step + 1
@@ -66,10 +67,11 @@ def local_task(task, max_steps=5, verbose=True, max_history_chars=None, max_toke
                     "status": "CONTEXT_ERROR",
                     "answer": f"servidor reportó error de contexto: {e}",
                     "history_capped": history_capped,
+                    "tool_calls": tool_calls,
                 }
             raise
         if not isinstance(plan, dict):
-            return {"status": "ERROR", "answer": f"plan inválido: {plan}", "history_capped": history_capped}
+            return {"status": "ERROR", "answer": f"plan inválido: {plan}", "history_capped": history_capped, "tool_calls": tool_calls}
         if plan.get("raw_text") or plan.get("call_failed"):
             flag = "raw_text" if plan.get("raw_text") else "call_failed"
             offending = str(plan.get("answer", ""))[:500]
@@ -78,6 +80,7 @@ def local_task(task, max_steps=5, verbose=True, max_history_chars=None, max_toke
                 "answer": f"el modelo no devolvió un plan JSON válido (flag={flag}): {offending}",
                 "steps": step,
                 "history_capped": history_capped,
+                "tool_calls": tool_calls,
             }
         if plan.get("done") or not plan.get("tool"):
             return {
@@ -85,8 +88,10 @@ def local_task(task, max_steps=5, verbose=True, max_history_chars=None, max_toke
                 "answer": plan.get("answer", ""),
                 "steps": step,
                 "history_capped": history_capped,
+                "tool_calls": tool_calls,
             }
         name, args = plan.get("tool"), plan.get("args") or {}
+        tool_calls.append({"step": step, "tool": name, "args": args})
         if verbose:
             print(f"  [{step}] {name}({args})")
         try:
@@ -99,6 +104,7 @@ def local_task(task, max_steps=5, verbose=True, max_history_chars=None, max_toke
         "answer": "no terminé en los pasos permitidos",
         "history": "".join(history_entries)[-1500:],
         "history_capped": history_capped,
+        "tool_calls": tool_calls,
     }
 
 def run_task(task, max_steps=14):
