@@ -36,10 +36,16 @@ def _command_restriction_error(first, seg):
         return None
 
     if first == "git":
-        if "-c" in tokens or "--exec-path" in tokens:
+        if any(
+            tok in ("-c", "--exec-path")
+            or tok.startswith("--exec-path=")
+            or (tok.startswith("-c") and "=" in tok)
+            for tok in tokens
+        ):
             return (f"RECHAZADO: segmento '{seg}' usa 'git' con '-c' o "
-                    f"'--exec-path', no permitido (puede ejecutar otros comandos)")
-        subcommand = tokens[1] if len(tokens) > 1 else None
+                    f"'--exec-path' (incluida su forma pegada, p.ej. -ccore.pager=... "
+                    f"o --exec-path=...), no permitido (puede ejecutar otros comandos)")
+        subcommand = next((tok for tok in tokens[1:] if not tok.startswith("-")), None)
         if subcommand not in _GIT_ALLOWED_SUBCOMMANDS:
             return (f"RECHAZADO: segmento '{seg}' usa 'git {subcommand}', solo se "
                     f"permite {sorted(_GIT_ALLOWED_SUBCOMMANDS)}")

@@ -106,6 +106,21 @@ def test_git_log_allowed(tmp_path):
     assert not result.startswith("RECHAZADO")
 
 
+def test_git_global_flag_before_subcommand_allowed(tmp_path):
+    result = t.run_safe_bash("git --no-pager log --oneline")
+    assert not result.startswith("RECHAZADO")
+
+
+def test_git_global_flag_before_unlisted_subcommand_rejected(tmp_path):
+    result = t.run_safe_bash("git --no-pager push")
+    assert result.startswith("RECHAZADO")
+
+
+def test_git_dash_c_rejected_even_with_global_flag(tmp_path):
+    result = t.run_safe_bash("git -c core.pager=sh --no-pager log")
+    assert result.startswith("RECHAZADO")
+
+
 def test_docker_run_bind_mount_rejected():
     result = t.run_safe_bash("docker run -v /:/host busybox sh")
     assert result.startswith("RECHAZADO")
