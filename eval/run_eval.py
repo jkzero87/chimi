@@ -44,6 +44,7 @@ def run_task(task, profile, run_id):
             "seconds": round(elapsed, 2),
             "status": result.get("status"),
             "answer": result.get("answer"),
+            "tool_calls": result.get("tool_calls"),
         }
     finally:
         shutil.rmtree(sandbox, ignore_errors=True)
