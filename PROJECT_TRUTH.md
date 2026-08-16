@@ -281,3 +281,32 @@ Of the 3 failing chain records in 20260815_154155, one is a raw
 verdict — the pre-2d7e07c budget-overrun signature — while the other two
 are well-formed SAFE conclusions on a chain that is actually UNSAFE
 (genuine reasoning failures).
+
+## chain / function_ranges two-arm experiment, clean re-run (reported by
+user, 2026-08-15, not run by a command in this session)
+
+CLEAN RE-RUN of the two-arm chain experiment, 2026-08-15, both arms after
+commits 2d7e07c and 56f6be7 so budget overruns are labelled rather than
+hidden. Both arms show status_breakdown {'OK': 20} — zero overruns, so
+neither arm is contaminated.
+
+  WITH function_ranges    (run 20260815_192245): 19/20 = 95%,
+    steps median 3 (min 3, max 3), seconds median 16.56
+  WITHOUT function_ranges (run 20260815_193020): 20/20 = 100%,
+    steps median 5 (min 4, max 7), seconds median 22.67
+
+INTERPRETATION, stated with its limits: one failure against zero in 20
+runs is NOT distinguishable from noise. The claim supported is the
+negative one — two independent experiments found no evidence that
+function_ranges improves correctness, and both trended slightly the other
+way. What it does buy is unambiguous: 2 fewer steps and ~6 seconds per
+run.
+
+DECISION: function_ranges stays. The time and step savings are real; the
+accuracy difference is not.
+
+OPEN HYPOTHESIS, untested: without the tool the model takes 5 steps
+instead of 3, and those extra steps are it reading the source itself.
+Handing it the structure may remove the occasion to build the judgement,
+rather than removing the need for it. This is the opposite of the original
+design assumption and has not been tested.
