@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 *.bak
 *.bak_*
+!eval/fixtures/research.py.bak_20260815_092502
 *.pre_*
 *.log
 .webcache/

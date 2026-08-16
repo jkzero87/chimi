@@ -14,9 +14,7 @@ from pathlib import Path
 
 from config import ROOT
 
-FIXTURE = Path(
-    "/home/jkzero/data-engineer-prep/llm/harness/research.py.bak_20260815_092502"
-)
+FIXTURE = Path(__file__).parent / "fixtures" / "research.py.bak_20260815_092502"
 
 
 def setup():
