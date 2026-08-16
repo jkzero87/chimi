@@ -12,12 +12,14 @@ TRUNCATION_NOTE = "\n[TRUNCADO en 4000 chars. Usa start_line y end_line para lee
 
 SAFE_CMDS = {"ls","cat","head","tail","wc","df","du","find","grep","git",
              "systemctl","docker","nvidia-smi","free","uname","which","ss","date","ps",
-             "cp","diff"}
+             "cp","diff","pip"}
 
 _FIND_FORBIDDEN_FLAGS = {"-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprintf"}
 _GIT_ALLOWED_SUBCOMMANDS = {"status", "log", "diff", "show", "branch", "rev-parse", "ls-files"}
 _DOCKER_ALLOWED_SUBCOMMANDS = {"ps", "images", "inspect", "logs", "version"}
 _SYSTEMCTL_ALLOWED_SUBCOMMANDS = {"status", "is-active", "list-units"}
+_PIP_ALLOWED_SUBCOMMANDS = {"show", "list", "index", "--version"}
+_ALLOWED_REDIRECT_TOKENS = re.compile(r"(?<!\S)(2>/dev/null|2>&1)(?!\S)")
 
 def _command_restriction_error(first, seg):
     """Per-command restrictions beyond the SAFE_CMDS first-word check --
@@ -63,6 +65,13 @@ def _command_restriction_error(first, seg):
         if subcommand not in _SYSTEMCTL_ALLOWED_SUBCOMMANDS:
             return (f"RECHAZADO: segmento '{seg}' usa 'systemctl {subcommand}', "
                     f"solo se permite {sorted(_SYSTEMCTL_ALLOWED_SUBCOMMANDS)}")
+        return None
+
+    if first == "pip":
+        subcommand = tokens[1] if len(tokens) > 1 else None
+        if subcommand not in _PIP_ALLOWED_SUBCOMMANDS:
+            return (f"RECHAZADO: segmento '{seg}' usa 'pip {subcommand}', "
+                    f"solo se permite {sorted(_PIP_ALLOWED_SUBCOMMANDS)}")
         return None
 
     return None
@@ -127,11 +136,12 @@ def run_safe_bash(cmd):
         return f"RECHAZADO: contiene backtick (sustitución de comandos no permitida): {cmd}"
     if "$(" in cmd:
         return f"RECHAZADO: contiene '$(' (sustitución de comandos no permitida): {cmd}"
-    if ">" in cmd:
+    scrubbed = _ALLOWED_REDIRECT_TOKENS.sub("", cmd)
+    if ">" in scrubbed:
         return f"RECHAZADO: contiene '>' (redirección no permitida): {cmd}"
-    if "<" in cmd:
+    if "<" in scrubbed:
         return f"RECHAZADO: contiene '<' (redirección no permitida): {cmd}"
-    if "&" in cmd.replace("&&", ""):
+    if "&" in scrubbed.replace("&&", ""):
         return f"RECHAZADO: contiene '&' suelto (solo se permite '&&' como separador): {cmd}"
 
     for seg in re.split(r"\|\||&&|[|;]", cmd):

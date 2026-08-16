@@ -95,7 +95,7 @@ def local_task(task, max_steps=5, verbose=True, max_history_chars=None, max_toke
         if verbose:
             print(f"  [{step}] {name}({args})")
         try:
-            obs = TOOLS[name](**args) if name in TOOLS else f"herramienta desconocida: {name}"
+            obs = TOOLS[name](**args) if name in TOOLS else f"herramienta desconocida: {name}. Herramientas válidas: {sorted(TOOLS)}"
         except Exception as e:
             obs = f"ERROR: {e}"
         history_entries.append(f"\n--- {name}({args}) ---\n{obs}\n")

@@ -41,6 +41,24 @@ def test_substitution_rejected():
     assert result.startswith("RECHAZADO")
 
 
+def test_stderr_to_devnull_allowed(tmp_path):
+    (tmp_path / "a.py").write_text("x = 1\n")
+    result = t.run_safe_bash("find . -name '*.py' 2>/dev/null")
+    assert not result.startswith("RECHAZADO")
+    assert result.startswith("exit=")
+
+
+def test_stderr_to_stdout_allowed():
+    result = t.run_safe_bash("ls 2>&1")
+    assert not result.startswith("RECHAZADO")
+    assert result.startswith("exit=")
+
+
+def test_redirection_to_file_still_rejected():
+    result = t.run_safe_bash("ls > /tmp/x")
+    assert result.startswith("RECHAZADO")
+
+
 def test_pipe_of_two_safe_commands_allowed(tmp_path):
     (tmp_path / "a.py").write_text("x = 1\n")
     result = t.run_safe_bash("find . -name '*.py' | head -3")
@@ -529,4 +547,36 @@ def test_diff_allowed(tmp_path):
 
 def test_python3_still_rejected():
     result = t.run_safe_bash("python3 -c 'x'")
+    assert result.startswith("RECHAZADO")
+
+
+# --- allowlist: pip added, restricted to read-only subcommands ---
+
+def test_pip_show_allowed():
+    result = t.run_safe_bash("pip show pandas")
+    assert not result.startswith("RECHAZADO")
+
+
+def test_pip_list_allowed():
+    result = t.run_safe_bash("pip list")
+    assert not result.startswith("RECHAZADO")
+
+
+def test_pip_install_rejected():
+    result = t.run_safe_bash("pip install requests")
+    assert result.startswith("RECHAZADO")
+
+
+def test_pip_uninstall_rejected():
+    result = t.run_safe_bash("pip uninstall requests")
+    assert result.startswith("RECHAZADO")
+
+
+def test_pip_download_rejected():
+    result = t.run_safe_bash("pip download requests")
+    assert result.startswith("RECHAZADO")
+
+
+def test_pip_wheel_rejected():
+    result = t.run_safe_bash("pip wheel requests")
     assert result.startswith("RECHAZADO")

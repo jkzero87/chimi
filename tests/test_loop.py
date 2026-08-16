@@ -191,6 +191,17 @@ def test_local_task_well_formed_tool_plan_proceeds_to_tool(monkeypatch):
     assert result["status"] == "OK"
 
 
+def test_local_task_unknown_tool_observation_lists_valid_tool_names(monkeypatch):
+    monkeypatch.setattr(l, "llm_json", lambda *a, **k: {"tool": "find", "args": {}})
+    monkeypatch.setattr(l, "TOOLS", {"list_dir": lambda **kw: "x", "read_file": lambda **kw: "y"})
+
+    result = l.local_task("task", max_steps=1)
+
+    assert result["status"] == "MAX_STEPS"
+    assert "herramienta desconocida: find" in result["history"]
+    assert "['list_dir', 'read_file']" in result["history"]
+
+
 # --- local_task must return "tool_calls" (name + args, no observation) on every path ---
 
 def test_local_task_tool_calls_recorded_on_ok_path(monkeypatch):
