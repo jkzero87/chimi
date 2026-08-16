@@ -27,7 +27,7 @@ a PROJECT_TRUTH.md.
 ## 2. Prerequisites
 
 A `llama-server` must be running on `PORT` (from `config.py`, default
-`8092`, env-overridable via `AGENTE_LOCAL_PORT`) serving `MODEL_PATH` (from
+`8092`, env-overridable via `CHIMI_PORT`) serving `MODEL_PATH` (from
 `config.py`). See `agent/server.py` to start/stop/check it.
 
 Only one `llama-server` fits in this card's 16GB VRAM (PROJECT_TRUTH.md),

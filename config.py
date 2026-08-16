@@ -10,15 +10,15 @@ from pathlib import Path
 
 MODEL_PATH = "/home/jkzero/models/Qwen3.8-27B/Qwen3.8-27B-IQ4_XS.gguf"
 BIN_PATH = "/home/jkzero/llama.cpp/build/bin/llama-server"
-PORT = int(os.environ.get("AGENTE_LOCAL_PORT", "8092"))
+PORT = int(os.environ.get("CHIMI_PORT", "8092"))
 
 # fast: 15/15 in ~72s/run. deep: 14/15 in ~133s/run. 8192 ctx is enough
 # because tools deliver fragments, not whole files. (3 runs each, 2026-08-15)
-DEFAULT_PROFILE = os.environ.get("AGENTE_LOCAL_DEFAULT_PROFILE", "fast")
+DEFAULT_PROFILE = os.environ.get("CHIMI_DEFAULT_PROFILE", "fast")
 
 ROOT = Path.home().resolve()
 MAX_CHARS = 4000
 GREP_MAX_MATCHES = 200
-MAX_HISTORY_CHARS = int(os.environ.get("AGENTE_LOCAL_MAX_HISTORY_CHARS", "12000"))
-DELETE_REVIEW_MAX_LINES = int(os.environ.get("AGENTE_LOCAL_DELETE_REVIEW_MAX_LINES", "50"))
-PLANNER_MAX_TOKENS = int(os.environ.get("AGENTE_LOCAL_PLANNER_MAX_TOKENS", "3000"))
+MAX_HISTORY_CHARS = int(os.environ.get("CHIMI_MAX_HISTORY_CHARS", "12000"))
+DELETE_REVIEW_MAX_LINES = int(os.environ.get("CHIMI_DELETE_REVIEW_MAX_LINES", "50"))
+PLANNER_MAX_TOKENS = int(os.environ.get("CHIMI_PLANNER_MAX_TOKENS", "3000"))

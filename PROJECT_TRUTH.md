@@ -113,7 +113,8 @@ request. Loading successfully does not mean it works.
 
 ## Port (assigned by user, 2026-08-15)
 
-PORT = 8092 (`config.py`, env-overridable via `AGENTE_LOCAL_PORT`). 8090 and
+PORT = 8092 (`config.py`, env-overridable via `CHIMI_PORT`, named
+`AGENTE_LOCAL_PORT` before the chimi rename). 8090 and
 8091 belong to the search-assistant project (`llm/harness`) and must never
 be used here.
 
@@ -203,8 +204,9 @@ command in this session)
 
 - CHANGE: the planner's max_tokens was hardcoded to 900 in local_task. It
   is now config.PLANNER_MAX_TOKENS, default 3000, env-overridable as
-  AGENTE_LOCAL_PLANNER_MAX_TOKENS, with an optional per-call max_tokens
-  parameter on local_task.
+  CHIMI_PLANNER_MAX_TOKENS (named AGENTE_LOCAL_PLANNER_MAX_TOKENS before
+  the chimi rename), with an optional per-call max_tokens parameter on
+  local_task.
 - MEASURED, chain x20 before (900) vs after (3000): budget overruns went
   from 1 to 0; both batches passed 18/20; median seconds went from ~16.5
   to 15.7, max 26.8 on a single 4-step run. Raising the ceiling cost no
