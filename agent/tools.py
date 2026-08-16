@@ -216,26 +216,37 @@ def check_syntax(path):
     n = len(src.split("\n"))
     return f"OK: valid Python ({n} lines)"
 
-def _calls_orig(node):
+def _module_level_aliases(tree):
+    """Map target_name -> (value_name, lineno) for every module-level
+    `target = value` assignment where value is a bare name referring to a
+    module-level def/async def -- filters out constant aliasing like
+    PORT = DEFAULT_PORT.
+    """
+    def_names = {n.name for n in tree.body
+                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    aliases = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not isinstance(node.value, ast.Name) or node.value.id not in def_names:
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                aliases[target.id] = (node.value.id, node.lineno)
+    return aliases
+
+def _calls_aliases(node, aliases):
     found = []
     for sub in ast.walk(node):
         if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name):
             n = sub.func.id
-            if (n.startswith("_orig") or n.startswith("_original")) and n not in found:
+            if n in aliases and n not in found:
                 found.append(n)
     return found
 
-def _orig_assignments(tree, name):
-    found = []
-    for node in tree.body:
-        if not isinstance(node, ast.Assign):
-            continue
-        if not (isinstance(node.value, ast.Name) and node.value.id == name):
-            continue
-        for target in node.targets:
-            if isinstance(target, ast.Name) and (target.id.startswith("_orig") or target.id.startswith("_original")):
-                found.append((target.id, node.lineno))
-    return found
+def _alias_assignments(aliases, name):
+    return [(target, lineno) for target, (value_name, lineno) in aliases.items()
+            if value_name == name]
 
 def function_ranges(path, name):
     q = _safe(path)
@@ -248,21 +259,23 @@ def function_ranges(path, name):
     if not defs:
         return f"no module-level definition of '{name}' found in {q}"
 
+    aliases = _module_level_aliases(tree)
+
     lines = []
     for i, node in enumerate(defs):
         start = node.decorator_list[0].lineno if node.decorator_list else node.lineno
         end = node.end_lineno
         live = (i == len(defs) - 1)
-        calls = _calls_orig(node)
-        lines.append(f"{name} at lines {start}-{end}: live={live} calls_orig={calls}")
+        calls = _calls_aliases(node, aliases)
+        lines.append(f"{name} at lines {start}-{end}: live={live} calls_aliases={calls}")
 
-    assigns = _orig_assignments(tree, name)
+    assigns = _alias_assignments(aliases, name)
     if assigns:
-        lines.append(f"module-level _orig/_original assignments pointing at '{name}':")
+        lines.append(f"module-level assignments pointing at '{name}':")
         for target_id, lineno in assigns:
             lines.append(f"  line {lineno}: {target_id} = {name}")
     else:
-        lines.append(f"no module-level _orig/_original assignment found for '{name}'")
+        lines.append(f"no module-level assignment found for '{name}'")
 
     return "\n".join(lines)
 
@@ -290,8 +303,8 @@ Available tools:
 - function_ranges(path, name)  for a .py file, list every MODULE-LEVEL def/async def named `name`
                              in file order, each with its start line (decorator line if
                              decorated), end line, whether it is the live (last) one, and any
-                             _orig/_original names it calls; also lists module-level
-                             `_orig... = name` assignments. Does not look inside classes or
+                             calls to a module-level alias of a def; also lists module-level
+                             assignments pointing at `name`. Does not look inside classes or
                              other functions.
 The 'path' argument is a filesystem path ONLY. Never include words from the user's sentence in
 it (prepositions like 'en', 'in', 'the'). Paths are relative to the user's home directory.

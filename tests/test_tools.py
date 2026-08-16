@@ -345,6 +345,54 @@ def test_function_ranges_no_such_name(tmp_path):
     assert "no module-level definition" in result
 
 
+def test_function_ranges_still_detects_orig_prefixed_alias(tmp_path):
+    (tmp_path / "fixture.py").write_text(_FUNCTION_RANGES_FIXTURE)
+    result = t.function_ranges("fixture.py", "thing")
+    assert "_orig_thing" in _entry_line(result, "13-14")
+
+
+# --- function_ranges: structural (non-name-based) alias detection ---
+
+_ALIAS_FIXTURE = "\n".join([
+    "def target():",              # 1
+    "    return 1",               # 2
+    "",                           # 3
+    "old_f = target",             # 4
+    "",                           # 5
+    "SOME_CONSTANT = 42",         # 6
+    "X = SOME_CONSTANT",          # 7
+    "",                           # 8
+    "def wrapper():",             # 9
+    "    return old_f() + X()",   # 10
+    "",                           # 11
+    "def lonely():",              # 12
+    "    return 2",               # 13
+]) + "\n"
+
+
+def test_function_ranges_detects_non_underscore_alias(tmp_path):
+    (tmp_path / "fixture.py").write_text(_ALIAS_FIXTURE)
+
+    calls = t.function_ranges("fixture.py", "wrapper")
+    assert "old_f" in _entry_line(calls, "calls_aliases")
+
+    assignment = t.function_ranges("fixture.py", "target")
+    assert "line 4: old_f = target" in assignment
+
+
+def test_function_ranges_constant_alias_not_reported(tmp_path):
+    (tmp_path / "fixture.py").write_text(_ALIAS_FIXTURE)
+    result = t.function_ranges("fixture.py", "wrapper")
+    assert "X" not in _entry_line(result, "calls_aliases")
+
+
+def test_function_ranges_no_aliases_reports_cleanly(tmp_path):
+    (tmp_path / "fixture.py").write_text(_ALIAS_FIXTURE)
+    result = t.function_ranges("fixture.py", "lonely")
+    assert "calls_aliases=[]" in result
+    assert "no module-level assignment found for 'lonely'" in result
+
+
 # --- allowlist: cp, diff added; interpreters still rejected ---
 
 def test_cp_allowed(tmp_path):
