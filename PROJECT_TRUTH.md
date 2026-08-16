@@ -310,3 +310,34 @@ instead of 3, and those extra steps are it reading the source itself.
 Handing it the structure may remove the occasion to build the judgement,
 rather than removing the need for it. This is the opposite of the original
 design assumption and has not been tested.
+
+## SYSTEM re-execution line (reported by user, 2026-08-15, not run by a
+command in this session)
+
+- CHANGE: two sentences added to SYSTEM in agent/tools.py stating that
+  when judging whether code can be removed, the model should reason about
+  the file being executed from the top rather than about an
+  already-imported module, and that an assignment capturing a function
+  raises NameError if the def it depends on has been removed.
+- WHY: diagnosed by reading the failed chain answers. The model described
+  the wrapper chain correctly every time and then concluded SAFE, because
+  it reasoned about an already-loaded module's object graph. It was never
+  misreading the chain.
+- MEASURED (run 20260815_195320): chain 100/100 with the line, status
+  breakdown {'OK': 100}. Baseline without it was 37/40 (92.5%) across
+  runs 20260815_183149 and 20260815_192245, both after the raw_text fix.
+  Zero failures in 100 against a 7.5% rate gives p≈0.008.
+- MEASURED, no regression: full suite 15/15 across 3 runs, ~36-39s per
+  run against a ~40s baseline, other four tasks unchanged at 2,2,2,3
+  steps. This matters because SYSTEM is sent on every planner call of
+  every task.
+- MEASURED, side effect: chain got FASTER — seconds median 14.145
+  (min 11.56, max 28.73) against 16.56 in baseline run 20260815_192245.
+  Steps median 3.0 with min 2 and max 4, where the baseline arm was rigid
+  at 3/3/3. Given the key fact, the model sometimes finishes in 2 steps,
+  which did not happen before.
+- NOT RESOLVED: the example uses `_orig = f`, which is this codebase's
+  naming convention rather than a general Python idiom. It cannot be
+  distinguished whether the model learned the semantics or recognised the
+  name. The effect is real; its cause is not established. A run with
+  `x = f` would separate the two.

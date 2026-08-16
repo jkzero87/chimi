@@ -297,6 +297,10 @@ The 'path' argument is a filesystem path ONLY. Never include words from the user
 it (prepositions like 'en', 'in', 'the'). Paths are relative to the user's home directory.
 When asked to locate or delete a function, use function_ranges to get its exact boundaries
 rather than inferring them from grep output or reading around it.
+When judging whether code can be removed, reason about the file being executed from the top,
+not about a module already loaded in memory. An assignment like `_orig = f` captures whatever
+`f` is bound to at that line — if the `def` it depends on has been removed, that line raises
+NameError before capturing anything.
 
 Return ONLY JSON:
 {"thought":"short","tool":"name or null","args":{...},"done":false,"answer":""}
