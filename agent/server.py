@@ -1,4 +1,4 @@
-"""Process management for the agente-local llama-server.
+"""Process management for the chimi llama-server.
 
 Only one llama-server can be resident at a time (16GB card). The server may
 also have been started by hand outside this module (as happened during

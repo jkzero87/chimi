@@ -1,9 +1,9 @@
-"""Paths and deployment settings for the agente-local project. See
+"""Paths and deployment settings for the chimi project. See
 PROJECT_TRUTH.md for provenance.
 
 PORT must never be 8090 or 8091 — those belong to the search-assistant
 project (llm/harness). Only one llama-server fits in this card's 16GB, so
-agente-local and llm/harness cannot run at the same time regardless of port.
+chimi and llm/harness cannot run at the same time regardless of port.
 """
 import os
 from pathlib import Path

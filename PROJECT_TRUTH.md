@@ -1,4 +1,4 @@
-# PROJECT_TRUTH — agente-local
+# PROJECT_TRUTH — chimi
 
 This is a separate project from `llm/harness`. Different models, different
 hardware assumptions. Do not inherit facts from `llm/harness/PROJECT_TRUTH.md`.
@@ -118,9 +118,9 @@ PORT = 8092 (`config.py`, env-overridable via `CHIMI_PORT`, named
 8091 belong to the search-assistant project (`llm/harness`) and must never
 be used here.
 
-Only one llama-server fits in this card's 16GB, so agente-local and
-llm/harness cannot run at the same time regardless of port (reported by
-user, 2026-08-15).
+Only one llama-server fits in this card's 16GB, so chimi (then
+agente-local) and llm/harness cannot run at the same time regardless of
+port (reported by user, 2026-08-15).
 
 Corroborated this session (`nvidia-smi --query-gpu=... --format=csv`,
 2026-08-15 08:51): with one llama-server resident (15684 MiB used), only 146

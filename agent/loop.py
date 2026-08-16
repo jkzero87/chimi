@@ -1,4 +1,4 @@
-"""Tool-use loop for agente-local. Copied from llm/harness/tools.py 2026-08-15,
+"""Tool-use loop for chimi. Copied from llm/harness/tools.py 2026-08-15,
 adapted to import llm_json from agent.llm and PORT from config.py instead of
 research.py/BRAIN_PORT.
 """

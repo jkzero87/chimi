@@ -1,4 +1,4 @@
-"""Named llama-server profiles for agente-local. See PROJECT_TRUTH.md for
+"""Named llama-server profiles for chimi. See PROJECT_TRUTH.md for
 certification evidence (eval.py runs, interactive t/s, prefill/generation
 numbers) behind each profile below.
 

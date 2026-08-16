@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Eval CLI for agente-local. Runs local_task against fresh sandboxes and
+"""Eval CLI for chimi. Runs local_task against fresh sandboxes and
 checks results mechanically. Never touches the real harness directory --
 sandboxes are created and destroyed under ROOT for each task.
 """
@@ -51,7 +51,7 @@ def run_task(task, profile, run_id):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="agente-local eval suite")
+    parser = argparse.ArgumentParser(description="chimi eval suite")
     parser.add_argument("--profile", choices=["fast", "deep"], default=DEFAULT_PROFILE)
     parser.add_argument("--only")
     parser.add_argument("--runs", type=int, default=1)

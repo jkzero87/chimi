@@ -1,4 +1,4 @@
-"""Evaluation tasks for agente-local. Every check is mechanical (grep, ast,
+"""Evaluation tasks for chimi. Every check is mechanical (grep, ast,
 exact string) -- never a second LLM call. Ground truth is always computed
 from FIXTURE, a frozen copy of the real harness's research.py from before
 its result_score/build_evidence_pack cleanup. Tasks never touch the real

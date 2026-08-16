@@ -1,4 +1,4 @@
-"""Self-contained LLM client for agente-local. Imports NOTHING from
+"""Self-contained LLM client for chimi. Imports NOTHING from
 research.py or llm/harness — stdlib only, so this project has no
 requirements.txt dependencies.
 """

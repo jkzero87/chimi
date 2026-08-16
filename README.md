@@ -1,4 +1,4 @@
-# agente-local
+# chimi
 
 ## 1. What this is
 
@@ -21,7 +21,7 @@ This is a **separate project** from the search assistant in `llm/harness`,
 which answers questions from the web using two models (an executor and a
 supervisor, on ports 8090/8091). The word "harness" here refers to the
 scaffolding *pattern* — planner, judge, retry loop — not to either project
-by name. `llm/harness` and `llm/agente-local` do not share code, models, or
+by name. `llm/harness` and `llm/chimi` do not share code, models, or
 a PROJECT_TRUTH.md.
 
 ## 2. Prerequisites

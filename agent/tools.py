@@ -1,4 +1,4 @@
-"""Local tools for agente-local. Read tools plus write_file/delete_lines,
+"""Local tools for chimi. Read tools plus write_file/delete_lines,
 which modify the filesystem under ROOT (dry_run defaults to true on both).
 Copied from llm/harness/tools.py 2026-08-15, adapted to import ROOT,
 MAX_CHARS and GREP_MAX_MATCHES from config.py instead of hardcoding them.
