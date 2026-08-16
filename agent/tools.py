@@ -14,6 +14,53 @@ SAFE_CMDS = {"ls","cat","head","tail","wc","df","du","find","grep","git",
              "systemctl","docker","nvidia-smi","free","uname","which","ss","date","ps",
              "cp","diff"}
 
+_FIND_FORBIDDEN_FLAGS = {"-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprintf"}
+_GIT_ALLOWED_SUBCOMMANDS = {"status", "log", "diff", "show", "branch", "rev-parse", "ls-files"}
+_DOCKER_ALLOWED_SUBCOMMANDS = {"ps", "images", "inspect", "logs", "version"}
+_SYSTEMCTL_ALLOWED_SUBCOMMANDS = {"status", "is-active", "list-units"}
+
+def _command_restriction_error(first, seg):
+    """Per-command restrictions beyond the SAFE_CMDS first-word check --
+    allowlisted commands that can themselves execute other commands (find
+    -exec, git -c, docker run, systemctl start/stop) must be blocked here,
+    since the first-word check alone lets them through.
+    """
+    tokens = seg.split()
+
+    if first == "find":
+        forbidden = sorted(_FIND_FORBIDDEN_FLAGS & set(tokens))
+        if forbidden:
+            return (f"RECHAZADO: segmento '{seg}' usa 'find' con "
+                    f"{', '.join(forbidden)}, no permitido (puede ejecutar otros "
+                    f"comandos o borrar archivos)")
+        return None
+
+    if first == "git":
+        if "-c" in tokens or "--exec-path" in tokens:
+            return (f"RECHAZADO: segmento '{seg}' usa 'git' con '-c' o "
+                    f"'--exec-path', no permitido (puede ejecutar otros comandos)")
+        subcommand = tokens[1] if len(tokens) > 1 else None
+        if subcommand not in _GIT_ALLOWED_SUBCOMMANDS:
+            return (f"RECHAZADO: segmento '{seg}' usa 'git {subcommand}', solo se "
+                    f"permite {sorted(_GIT_ALLOWED_SUBCOMMANDS)}")
+        return None
+
+    if first == "docker":
+        subcommand = tokens[1] if len(tokens) > 1 else None
+        if subcommand not in _DOCKER_ALLOWED_SUBCOMMANDS:
+            return (f"RECHAZADO: segmento '{seg}' usa 'docker {subcommand}', solo "
+                    f"se permite {sorted(_DOCKER_ALLOWED_SUBCOMMANDS)}")
+        return None
+
+    if first == "systemctl":
+        subcommand = tokens[1] if len(tokens) > 1 else None
+        if subcommand not in _SYSTEMCTL_ALLOWED_SUBCOMMANDS:
+            return (f"RECHAZADO: segmento '{seg}' usa 'systemctl {subcommand}', "
+                    f"solo se permite {sorted(_SYSTEMCTL_ALLOWED_SUBCOMMANDS)}")
+        return None
+
+    return None
+
 def _safe(p):
     q = Path(os.path.expanduser(str(p)))
     if not q.is_absolute():
@@ -88,6 +135,9 @@ def run_safe_bash(cmd):
         first = seg.split()[0]
         if first not in SAFE_CMDS:
             return f"RECHAZADO: segmento '{seg}' usa '{first}', no está en la lista de comandos seguros {sorted(SAFE_CMDS)}"
+        restriction_error = _command_restriction_error(first, seg)
+        if restriction_error:
+            return restriction_error
 
     out = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60, cwd=str(ROOT))
     return f"exit={out.returncode}\n{(out.stdout + out.stderr)[:MAX_CHARS]}"

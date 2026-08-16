@@ -48,6 +48,109 @@ def test_pipe_of_two_safe_commands_allowed(tmp_path):
     assert result.startswith("exit=")
 
 
+# --- security: per-command restrictions on find/git/docker/systemctl ---
+
+def test_find_exec_rejected():
+    result = t.run_safe_bash("find . -exec sh -c 'rm -rf /' \\;")
+    assert result.startswith("RECHAZADO")
+
+
+def test_find_execdir_rejected():
+    result = t.run_safe_bash("find . -execdir sh -c 'echo pwned' \\;")
+    assert result.startswith("RECHAZADO")
+
+
+def test_find_ok_rejected():
+    result = t.run_safe_bash("find . -ok rm {} \\;")
+    assert result.startswith("RECHAZADO")
+
+
+def test_find_okdir_rejected():
+    result = t.run_safe_bash("find . -okdir rm {} \\;")
+    assert result.startswith("RECHAZADO")
+
+
+def test_find_delete_rejected():
+    result = t.run_safe_bash("find . -name '*.txt' -delete")
+    assert result.startswith("RECHAZADO")
+
+
+def test_find_fprintf_rejected():
+    result = t.run_safe_bash("find . -fprintf /tmp/out '%p\\n'")
+    assert result.startswith("RECHAZADO")
+
+
+def test_find_legitimate_use_allowed(tmp_path):
+    (tmp_path / "a.py").write_text("x = 1\n")
+    result = t.run_safe_bash("find . -name '*.py'")
+    assert not result.startswith("RECHAZADO")
+
+
+def test_git_dash_c_rejected(tmp_path):
+    result = t.run_safe_bash("git -c core.pager='sh -c whoami' log")
+    assert result.startswith("RECHAZADO")
+
+
+def test_git_exec_path_rejected(tmp_path):
+    result = t.run_safe_bash("git --exec-path=/tmp/evil status")
+    assert result.startswith("RECHAZADO")
+
+
+def test_git_unlisted_subcommand_rejected(tmp_path):
+    result = t.run_safe_bash("git push origin main")
+    assert result.startswith("RECHAZADO")
+
+
+def test_git_log_allowed(tmp_path):
+    result = t.run_safe_bash("git log --oneline")
+    assert not result.startswith("RECHAZADO")
+
+
+def test_docker_run_bind_mount_rejected():
+    result = t.run_safe_bash("docker run -v /:/host busybox sh")
+    assert result.startswith("RECHAZADO")
+
+
+def test_docker_ps_allowed():
+    result = t.run_safe_bash("docker ps")
+    assert not result.startswith("RECHAZADO")
+
+
+def test_systemctl_start_rejected():
+    result = t.run_safe_bash("systemctl start suach-executor")
+    assert result.startswith("RECHAZADO")
+
+
+def test_systemctl_stop_rejected():
+    result = t.run_safe_bash("systemctl stop suach-executor")
+    assert result.startswith("RECHAZADO")
+
+
+def test_systemctl_restart_rejected():
+    result = t.run_safe_bash("systemctl restart suach-executor")
+    assert result.startswith("RECHAZADO")
+
+
+def test_systemctl_enable_rejected():
+    result = t.run_safe_bash("systemctl enable suach-executor")
+    assert result.startswith("RECHAZADO")
+
+
+def test_systemctl_disable_rejected():
+    result = t.run_safe_bash("systemctl disable suach-executor")
+    assert result.startswith("RECHAZADO")
+
+
+def test_systemctl_status_allowed():
+    result = t.run_safe_bash("systemctl status suach-executor")
+    assert not result.startswith("RECHAZADO")
+
+
+def test_systemctl_is_active_allowed():
+    result = t.run_safe_bash("systemctl is-active suach-executor")
+    assert not result.startswith("RECHAZADO")
+
+
 # --- sandbox: _safe ---
 
 def test_safe_outside_root_raises():
