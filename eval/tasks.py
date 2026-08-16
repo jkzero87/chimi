@@ -144,6 +144,79 @@ def check_chain(result, sandbox):
     return False, ["answer does not contain 'UNSAFE'"]
 
 
+# --- chain_altnames: same fixture, _orig/_original naming convention removed ---
+#
+# Confirmed by both grep and an AST walk (Name / FunctionDef / AsyncFunctionDef /
+# ClassDef / arg / Attribute nodes) that the frozen fixture contains exactly four
+# identifiers starting with _orig or _original: _orig_bep_cap, _orig_bep_quote,
+# _original_format_evidence, _original_result_score. All four are covered by the
+# two prefix rules below; there is nothing else to rename.
+
+_ALIAS_PREFIX_RENAMES = (("_original", "prev"), ("_orig", "old"))
+
+
+def _rename_alias_prefix(name):
+    for prefix, replacement in _ALIAS_PREFIX_RENAMES:
+        if name.startswith(prefix):
+            return replacement + name[len(prefix):]
+    return name
+
+
+def _discover_orig_aliases(tree):
+    """Every identifier starting with _orig or _original that AST sees as a
+    real name (assignment target, call target, def name, parameter, or
+    attribute) -- not a string or comment that merely contains the text.
+    """
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and (node.id.startswith("_orig") or node.id.startswith("_original")):
+            names.add(node.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and (
+            node.name.startswith("_orig") or node.name.startswith("_original")
+        ):
+            names.add(node.name)
+        elif isinstance(node, ast.arg) and (node.arg.startswith("_orig") or node.arg.startswith("_original")):
+            names.add(node.arg)
+        elif isinstance(node, ast.Attribute) and (node.attr.startswith("_orig") or node.attr.startswith("_original")):
+            names.add(node.attr)
+    return names
+
+
+def _apply_orig_renames(text, tree):
+    """Deterministic: same input text -> same output text every run. Longest
+    names first so no rename can accidentally clobber a shorter name that is
+    a substring of another (not the case in the current fixture, but this
+    keeps the pass order-independent of dict/set iteration if that changes).
+    """
+    for old_name in sorted(_discover_orig_aliases(tree), key=len, reverse=True):
+        new_name = _rename_alias_prefix(old_name)
+        text = re.sub(rf"\b{re.escape(old_name)}\b", new_name, text)
+    return text
+
+
+_ORIG_NAME_RE = re.compile(r"\b_orig\w*\b|\b_original\w*\b")
+
+
+def setup_chain_altnames():
+    sandbox = Path(tempfile.mkdtemp(prefix="agente_eval_", dir=str(ROOT)))
+    dest = sandbox / "research.py"
+    shutil.copy2(FIXTURE, dest)
+
+    original_text = dest.read_text()
+    tree = ast.parse(original_text)  # FIXTURE itself is never modified
+    renamed_text = _apply_orig_renames(original_text, tree)
+
+    remaining = _ORIG_NAME_RE.findall(renamed_text)
+    assert not remaining, (
+        f"rename did not remove all _orig/_original identifiers in the sandbox "
+        f"copy: {remaining}"
+    )
+    ast.parse(renamed_text)  # must still be valid Python after the rename
+
+    dest.write_text(renamed_text)
+    return sandbox
+
+
 TASKS = [
     {
         "id": "locate",
@@ -173,6 +246,12 @@ TASKS = [
         "id": "chain",
         "prompt": "In {sandbox}/research.py, is build_evidence_pack safe to deduplicate down to only its last definition? Answer SAFE or UNSAFE and explain why.",
         "setup": setup,
+        "check": check_chain,
+    },
+    {
+        "id": "chain_altnames",
+        "prompt": "In {sandbox}/research.py, is build_evidence_pack safe to deduplicate down to only its last definition? Answer SAFE or UNSAFE and explain why.",
+        "setup": setup_chain_altnames,
         "check": check_chain,
     },
 ]
