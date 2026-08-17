@@ -16,6 +16,15 @@ answer. The tools (`agent/tools.py`) are:
 - `write_file(path, content, dry_run=True)` / `delete_lines(path,
   start_line, end_line, dry_run=True)` — the write tools; `dry_run`
   defaults to `True` on both
+- `replace_lines(path, start_line, end_line, text, dry_run=True)` — replace
+  a line range with `text` (empty text deletes it); `dry_run` defaults to
+  `True`
+- `check_syntax(path)` — parse a `.py` file with `ast.parse`; reports OK
+  or the exact `SyntaxError` (line and offset)
+- `function_ranges(path, name)` — list every module-level `def`/`async def`
+  named `name` with its start/end lines and whether it is the live one
+- `fetch_url(url)` — fetch an http(s) page and return extracted text
+  (network-gated: blocks non-http(s) schemes and loopback/private targets)
 
 This is a **separate project** from the search assistant in `llm/harness`,
 which answers questions from the web using two models (an executor and a
@@ -131,10 +140,11 @@ definitions") in the harness repo (`data-engineer-prep`,
   (`<path>.bak_YYYYMMDD_HHMMSS`, via `shutil.copy2`) — `write_file` only
   when it is overwriting a file that already existed; `delete_lines` always,
   since its target must already exist.
-- `run_safe_bash` rejects backtick, `$(`, `>`, `<`, and a lone `&` outright
-  (no redirection, no command substitution), then splits the command on
-  `|`, `;`, `&&`, `||` and requires every segment's first token to be in the
-  `SAFE_CMDS` allowlist before running anything.
+- `run_safe_bash` rejects backtick, `$(`, and a lone `&` outright
+  (no command substitution); `>` and `<` are rejected except for the
+  stderr-redirect forms `2>/dev/null` and `2>&1`. It then splits the
+  command on `|`, `;`, `&&`, `||` and requires every segment's first token
+  to be in the `SAFE_CMDS` allowlist before running anything.
 - All paths are sandboxed to `ROOT` (the user's home directory) —
   `_safe`/`_safe_new` resolve the path and reject anything outside `ROOT`;
   `_safe` also requires the target to already exist, `_safe_new` only
