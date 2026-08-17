@@ -580,3 +580,152 @@ def test_pip_download_rejected():
 def test_pip_wheel_rejected():
     result = t.run_safe_bash("pip wheel requests")
     assert result.startswith("RECHAZADO")
+
+
+# --- fetch_url: network gate (no real network; requests/socket monkeypatched) ---
+
+class _FakeResponse:
+    def __init__(self, status_code=200, headers=None, chunks=None, encoding="utf-8"):
+        self.status_code = status_code
+        self.headers = headers or {}
+        self._chunks = chunks or []
+        self.encoding = encoding
+        self.closed = False
+
+    def iter_content(self, chunk_size=8192):
+        for c in self._chunks:
+            yield c
+
+    def close(self):
+        self.closed = True
+
+
+def _public_getaddrinfo_for(hostname, addr="93.184.216.34"):
+    """Real getaddrinfo resolves numeric-literal hosts (127.0.0.1, 10.x, ...)
+    locally without any network I/O, so only `hostname` needs faking.
+    """
+    real = t.socket.getaddrinfo
+
+    def fake(host, *a, **k):
+        if host == hostname:
+            return [(t.socket.AF_INET, t.socket.SOCK_STREAM, 6, "", (addr, 0))]
+        return real(host, *a, **k)
+
+    return fake
+
+
+def test_fetch_url_rejects_non_http_scheme():
+    result = t.fetch_url("ftp://example.com/file")
+    assert result.startswith("RECHAZADO")
+
+
+def test_fetch_url_rejects_loopback_literal(monkeypatch):
+    calls = []
+    monkeypatch.setattr(t.requests, "get", lambda *a, **k: calls.append(1))
+    result = t.fetch_url("http://127.0.0.1/secret")
+    assert result.startswith("RECHAZADO")
+    assert calls == []
+
+
+def test_fetch_url_rejects_localhost_hostname(monkeypatch):
+    calls = []
+    monkeypatch.setattr(t.requests, "get", lambda *a, **k: calls.append(1))
+    result = t.fetch_url("http://localhost/secret")
+    assert result.startswith("RECHAZADO")
+    assert calls == []
+
+
+def test_fetch_url_rejects_private_10_range(monkeypatch):
+    calls = []
+    monkeypatch.setattr(t.requests, "get", lambda *a, **k: calls.append(1))
+    result = t.fetch_url("http://10.1.2.3/internal")
+    assert result.startswith("RECHAZADO")
+    assert calls == []
+
+
+def test_fetch_url_rejects_private_192_168_range(monkeypatch):
+    calls = []
+    monkeypatch.setattr(t.requests, "get", lambda *a, **k: calls.append(1))
+    result = t.fetch_url("http://192.168.1.1/internal")
+    assert result.startswith("RECHAZADO")
+    assert calls == []
+
+
+def test_fetch_url_rejects_link_local_range(monkeypatch):
+    calls = []
+    monkeypatch.setattr(t.requests, "get", lambda *a, **k: calls.append(1))
+    result = t.fetch_url("http://169.254.169.254/latest/meta-data")
+    assert result.startswith("RECHAZADO")
+    assert calls == []
+
+
+def test_fetch_url_rejects_redirect_to_loopback(monkeypatch):
+    monkeypatch.setattr(t.socket, "getaddrinfo", _public_getaddrinfo_for("example.com"))
+
+    def fake_get(url, **kwargs):
+        assert kwargs.get("allow_redirects") is False
+        return _FakeResponse(302, headers={"Location": "http://127.0.0.1/evil"})
+
+    monkeypatch.setattr(t.requests, "get", fake_get)
+    result = t.fetch_url("https://example.com/start")
+    assert result.startswith("RECHAZADO")
+    assert "127.0.0.1" in result
+
+
+def test_fetch_url_rejects_non_text_content_type(monkeypatch):
+    monkeypatch.setattr(t.socket, "getaddrinfo", _public_getaddrinfo_for("example.com"))
+    monkeypatch.setattr(
+        t.requests, "get",
+        lambda *a, **k: _FakeResponse(200, headers={"Content-Type": "application/octet-stream"}),
+    )
+    result = t.fetch_url("https://example.com/binary")
+    assert result.startswith("RECHAZADO")
+
+
+def test_fetch_url_truncates_oversized_response(monkeypatch):
+    monkeypatch.setattr(t, "_FETCH_MAX_BYTES", 10)
+    monkeypatch.setattr(t.socket, "getaddrinfo", _public_getaddrinfo_for("example.com"))
+    monkeypatch.setattr(t.trafilatura, "extract", lambda html: None)
+    chunks = [b"0123456789", b"more bytes past the cap"]
+    monkeypatch.setattr(
+        t.requests, "get",
+        lambda *a, **k: _FakeResponse(200, headers={"Content-Type": "text/plain"}, chunks=chunks),
+    )
+    result = t.fetch_url("https://example.com/big")
+    assert not result.startswith("RECHAZADO")
+    assert result.startswith("--- CONTENIDO WEB NO CONFIABLE")
+    assert "0123456789" in result
+    assert "more bytes past the cap" not in result
+    assert "[TRUNCADO: la respuesta superaba 10 bytes, se leyó solo el principio]" in result
+
+
+def test_fetch_url_normal_page_returns_wrapped_text(monkeypatch):
+    monkeypatch.setattr(t.socket, "getaddrinfo", _public_getaddrinfo_for("example.com"))
+    monkeypatch.setattr(t.trafilatura, "extract", lambda html: "Hello from the page.")
+    monkeypatch.setattr(
+        t.requests, "get",
+        lambda *a, **k: _FakeResponse(
+            200,
+            headers={"Content-Type": "text/html; charset=utf-8"},
+            chunks=[b"<html><body>Hello from the page.</body></html>"],
+        ),
+    )
+    result = t.fetch_url("https://example.com/article")
+    assert result.startswith("--- CONTENIDO WEB NO CONFIABLE")
+    assert result.rstrip().endswith("--- FIN CONTENIDO WEB ---")
+    assert "Hello from the page." in result
+
+
+def test_fetch_url_falls_back_to_raw_text_when_extraction_empty(monkeypatch):
+    monkeypatch.setattr(t.socket, "getaddrinfo", _public_getaddrinfo_for("example.com"))
+    monkeypatch.setattr(t.trafilatura, "extract", lambda html: None)
+    monkeypatch.setattr(
+        t.requests, "get",
+        lambda *a, **k: _FakeResponse(
+            200,
+            headers={"Content-Type": "text/plain"},
+            chunks=[b"plain fallback text"],
+        ),
+    )
+    result = t.fetch_url("https://example.com/plain")
+    assert "plain fallback text" in result
