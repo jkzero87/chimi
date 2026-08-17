@@ -547,6 +547,9 @@ When judging whether code can be removed, reason about the file being executed f
 not about a module already loaded in memory. An assignment like `_orig = f` captures whatever
 `f` is bound to at that line — if the `def` it depends on has been removed, that line raises
 NameError before capturing anything.
+When making several edits to the same file, apply them from the bottom of the file
+upward. An edit shifts the line numbers of everything below it, so a range computed
+against the original file is wrong once an earlier edit has been applied.
 
 Return ONLY JSON:
 {"thought":"short","tool":"name or null","args":{...},"done":false,"answer":""}
