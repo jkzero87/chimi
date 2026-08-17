@@ -357,6 +357,32 @@ command in this session)
   record per-call tool output), so the mechanical anchor never moved.
   Transfer of the rule to code using a DIFFERENT naming convention
   remains untested.
+  CLOSED, all three legs, 2026-08-16. The LIMIT above concerned two things
+  that had not moved: the tool's own naming-convention dependency, and the
+  fixture's naming convention. Both are now closed:
+  (2) THE TOOL — function_ranges no longer keys on the _orig/_original
+  prefix; it detects module-level aliases structurally (commit 486c2cb).
+  CERTIFIED: pytest 76, full suite 15/15 across 3 runs with the step
+  signature 2,2,2,3,3 unchanged, chain 100/100 (run 20260816_140433).
+  (3) THE CODE UNDER TEST — new eval task `chain_altnames` (commit
+  97bc6d9) derives a renamed copy of the frozen fixture in the sandbox
+  (`_original`->`prev`, `_orig`->`old`, discovered by AST each run,
+  asserted to leave zero _orig/_original matches before the agent sees
+  it). RESULT: 100/100. Same decision rule as leg (1) applies here too:
+  >=98/100 = semantics, <=93/100 = convention, 94-97 = inconclusive; 100
+  clears the bar.
+  CONCLUSION: the rule is about Python re-execution semantics, not about
+  matching this codebase's naming convention, and it transfers to code
+  using other naming conventions — the mechanical anchor that leg (1)
+  alone could not move has now moved on both remaining sides.
+  OBSERVATION, not a conclusion: `chain` runs rigid at 3 steps every time,
+  while `chain_altnames` showed a wider spread (several 5s, a few 4s, two
+  2s; median still 3). Reading: without the naming hint the model
+  sometimes takes more steps and still lands on the right answer.
+  NOTE: `chain_altnames` is now in TASKS, so a bare `--runs 3` runs SIX
+  tasks, not five, and the suite baseline is now 18/18, not 15/15. Any
+  future comparison against the 15/15 recorded above must account for
+  this.
   NOT INTERPRETABLE: the timing difference against the baseline arm (run
   20260815_195320, median 14.145s, steps max 4) — neither arm was
   repeated and run-to-run noise is ~10%. Accuracy is identical between
@@ -368,3 +394,6 @@ command in this session)
   calls_orig=False SILENTLY — the agent loses the mechanical fact and
   gets a false negative at the same time. The convention also appears in
   the tool's description and in its printed output, not only in SYSTEM.
+  FIXED 2026-08-16 (commit 486c2cb) — see the CLOSED note on the SYSTEM
+  re-execution entry above. Detection is now structural (module-level
+  alias, discovered by AST), not name-based.
