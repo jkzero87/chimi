@@ -378,6 +378,56 @@ def delete_lines(path, start_line, end_line, dry_run=True, override=False):
     q.write_text(new_content)
     return _diff_result(diff, backup)
 
+def replace_lines(path, start_line, end_line, text, dry_run=True):
+    """Replace lines start_line..end_line (1-indexed, inclusive) with `text`,
+    which may be zero or more lines (empty text deletes the range). Everything
+    outside the range is untouched, so the model never has to send the rest
+    of the file. No structural single-def gate here like delete_lines has --
+    this replaces arbitrary text, not a definition, so "does the range cover
+    exactly one def/class" isn't a meaningful check.
+    """
+    q = _safe(path)
+    txt = q.read_text(errors="replace")
+    lines = txt.split("\n")
+    n = len(lines)
+    if start_line < 1 or end_line < start_line or end_line > n:
+        return f"RECHAZADO: rango {start_line}-{end_line} fuera de límites; el archivo tiene {n} líneas"
+
+    replacement = text.split("\n") if text else []
+    if text.endswith("\n"):
+        # split("\n") turns a trailing newline into a bogus empty last
+        # element ("A\nB\n" -> ["A","B",""]), which would insert a blank
+        # line; drop it so "A\nB\n" and "A\nB" both yield ["A","B"].
+        replacement = replacement[:-1]
+    new_content = "\n".join(lines[:start_line - 1] + replacement + lines[end_line:])
+
+    if q.suffix == ".py":
+        try:
+            ast.parse(new_content)
+        except SyntaxError as e:
+            return f"RECHAZADO: el resultado tendría sintaxis Python inválida: {e}"
+
+    diff = "".join(difflib.unified_diff(
+        txt.splitlines(keepends=True), new_content.splitlines(keepends=True),
+        fromfile=str(q), tofile=str(q),
+    ))
+
+    if dry_run:
+        return _diff_result(diff)
+
+    size = end_line - start_line + 1
+    if size > DELETE_REVIEW_MAX_LINES:
+        return (
+            "RECHAZADO: requiere revisión humana antes de aplicarse "
+            f"(el rango tiene {size} líneas, más del límite de revisión "
+            f"({DELETE_REVIEW_MAX_LINES})). Diff que se habría aplicado:\n"
+            + _diff_result(diff)
+        )
+
+    backup = _backup(q)
+    q.write_text(new_content)
+    return _diff_result(diff, backup)
+
 def check_syntax(path):
     q = _safe(path)
     if q.suffix != ".py":
@@ -456,6 +506,7 @@ def function_ranges(path, name):
 TOOLS = {"list_dir": list_dir, "read_file": read_file,
          "grep_files": grep_files, "run_safe_bash": run_safe_bash,
          "write_file": write_file, "delete_lines": delete_lines,
+         "replace_lines": replace_lines,
          "check_syntax": check_syntax, "function_ranges": function_ranges,
          "fetch_url": fetch_url}
 
@@ -473,6 +524,7 @@ Available tools:
                                            dry_run defaults to true and only returns a diff
                                            without writing. You MUST show the diff and get the
                                            user's approval before calling again with dry_run=false.
+- replace_lines(path, start_line, end_line, text, dry_run)  replace a 1-indexed inclusive line range with `text` (empty text deletes it); dry_run defaults to true, same approval rule as above.
 - check_syntax(path)        parse a .py file with ast.parse; reports OK or the exact SyntaxError
                              (line and offset).
 - function_ranges(path, name)  for a .py file, list every MODULE-LEVEL def/async def named `name`

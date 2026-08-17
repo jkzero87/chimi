@@ -364,6 +364,122 @@ def test_delete_lines_override_not_exposed_to_model():
     assert "delete_lines(path, start_line, end_line, dry_run)" in t.SYSTEM
 
 
+# --- replace_lines ---
+
+def test_replace_lines_mid_file_leaves_rest_untouched(tmp_path):
+    f = tmp_path / "sample.txt"
+    f.write_text("a\nb\nc\nd\ne\n")
+    result = t.replace_lines("sample.txt", 2, 3, "X\nY\nZ", dry_run=False)
+    assert not result.startswith("RECHAZADO")
+    assert f.read_text() == "a\nX\nY\nZ\nd\ne\n"
+    backups = list(tmp_path.glob("sample.txt.bak_*"))
+    assert len(backups) == 1
+    assert backups[0].read_text() == "a\nb\nc\nd\ne\n"
+
+
+def test_replace_lines_empty_text_deletes_range(tmp_path):
+    f = tmp_path / "sample.txt"
+    f.write_text("a\nb\nc\nd\n")
+    result = t.replace_lines("sample.txt", 2, 3, "", dry_run=False)
+    assert not result.startswith("RECHAZADO")
+    assert f.read_text() == "a\nd\n"
+
+
+def test_replace_lines_dry_run_returns_diff_and_writes_nothing(tmp_path):
+    f = tmp_path / "sample.txt"
+    f.write_text("a\nb\nc\nd\n")
+    result = t.replace_lines("sample.txt", 2, 3, "X", dry_run=True)
+    assert f.read_text() == "a\nb\nc\nd\n"
+    assert "X" in result
+    assert not list(tmp_path.glob("sample.txt.bak_*"))
+
+
+def test_replace_lines_refuses_invalid_python_result(tmp_path):
+    f = tmp_path / "bad.py"
+    f.write_text("def foo():\n    return 1\n")
+    result = t.replace_lines("bad.py", 2, 2, "    return (", dry_run=False)
+    assert result.startswith("RECHAZADO")
+    assert f.read_text() == "def foo():\n    return 1\n"
+
+
+def test_replace_lines_oversized_removal_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "DELETE_REVIEW_MAX_LINES", 3)
+    f = tmp_path / "big.txt"
+    original = "a\nb\nc\nd\ne\n"
+    f.write_text(original)
+    result = t.replace_lines("big.txt", 1, 4, "X", dry_run=False)
+    assert result.startswith("RECHAZADO")
+    assert f.read_text() == original
+    assert not list(tmp_path.glob("big.txt.bak_*"))
+
+
+def test_replace_lines_out_of_range_names_line_count(tmp_path):
+    f = tmp_path / "sample.txt"
+    f.write_text("a\nb\nc\n")
+    n = len(f.read_text().split("\n"))
+    result = t.replace_lines("sample.txt", 1, 99, "X", dry_run=True)
+    assert result.startswith("RECHAZADO")
+    assert str(n) in result
+
+
+def test_replace_lines_trailing_newline_does_not_insert_blank_line(tmp_path):
+    f = tmp_path / "ten.txt"
+    original = "".join(f"L{i}\n" for i in range(1, 11))  # L1..L10, 10 lines
+    f.write_text(original)
+    result = t.replace_lines("ten.txt", 4, 5, "NUEVA A\nNUEVA B\n", dry_run=False)
+    assert not result.startswith("RECHAZADO")
+    expected = "L1\nL2\nL3\nNUEVA A\nNUEVA B\nL6\nL7\nL8\nL9\nL10\n"
+    assert f.read_text() == expected
+    assert len(f.read_text().split("\n")) == len(original.split("\n"))
+
+
+def test_replace_lines_no_trailing_newline_same_result_as_with_one(tmp_path):
+    f = tmp_path / "ten.txt"
+    original = "".join(f"L{i}\n" for i in range(1, 11))
+    f.write_text(original)
+    result = t.replace_lines("ten.txt", 4, 5, "NUEVA A\nNUEVA B", dry_run=False)
+    assert not result.startswith("RECHAZADO")
+    expected = "L1\nL2\nL3\nNUEVA A\nNUEVA B\nL6\nL7\nL8\nL9\nL10\n"
+    assert f.read_text() == expected
+
+
+def test_replace_lines_empty_string_leaves_no_blank_line(tmp_path):
+    f = tmp_path / "ten.txt"
+    original = "".join(f"L{i}\n" for i in range(1, 11))
+    f.write_text(original)
+    result = t.replace_lines("ten.txt", 4, 5, "", dry_run=False)
+    assert not result.startswith("RECHAZADO")
+    expected = "L1\nL2\nL3\nL6\nL7\nL8\nL9\nL10\n"
+    assert f.read_text() == expected
+
+
+def test_replace_lines_single_line_replacement_keeps_file_length(tmp_path):
+    f = tmp_path / "three.txt"
+    original = "a\nb\nc\n"
+    f.write_text(original)
+    result = t.replace_lines("three.txt", 2, 2, "X\n", dry_run=False)
+    assert not result.startswith("RECHAZADO")
+    expected = "a\nX\nc\n"
+    assert f.read_text() == expected
+    assert len(f.read_text().split("\n")) == len(original.split("\n"))
+
+
+def test_replace_lines_partial_function_replacement_allowed(tmp_path):
+    """No structural single-def gate: unlike delete_lines, a range covering
+    only part of a function body is allowed.
+    """
+    f = tmp_path / "partial.py"
+    original = "def foo():\n    a = 1\n    b = 2\n    return a + b\n"
+    f.write_text(original)
+    result = t.replace_lines("partial.py", 2, 3, "    a = 10\n    b = 20", dry_run=False)
+    assert not result.startswith("RECHAZADO")
+    assert f.read_text() == "def foo():\n    a = 10\n    b = 20\n    return a + b\n"
+
+
+def test_replace_lines_registered_in_system_prompt():
+    assert "replace_lines(path, start_line, end_line, text, dry_run)" in t.SYSTEM
+
+
 # --- check_syntax ---
 
 def test_check_syntax_valid(tmp_path):
