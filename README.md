@@ -43,6 +43,14 @@ Only one `llama-server` fits in this card's 16GB VRAM (PROJECT_TRUTH.md),
 so this project **cannot run at the same time** as the search assistant on
 ports 8090/8091.
 
+Python setup and unit tests (the tests need no model or server):
+
+```
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+.venv/bin/python -m pytest -q
+```
+
 ## 3. Profiles
 
 | | `fast` (default) | `deep` |
